@@ -37,6 +37,9 @@ if DICCIONARIO_PATH.exists():
 
 processor = ScheduleProcessor(subject_dict)
 
+from utils.subject_matcher import SubjectMatcher
+subject_matcher = SubjectMatcher(subject_dict)
+
 @api_router.get("/")
 async def root():
     return {"message": "Academic Schedule Processor API"}
@@ -193,10 +196,7 @@ async def get_subjects():
 @api_router.get("/subjects/search/{query}")
 async def search_subjects(query: str, limit: int = 10):
     """Busca materias por texto con fuzzy matching"""
-    from utils.subject_matcher import SubjectMatcher
-    
-    matcher = SubjectMatcher(subject_dict)
-    suggestions = matcher.get_suggestions(query, limit=limit)
+    suggestions = subject_matcher.get_suggestions(query, limit=limit)
     
     results = []
     for subject_id, name, confidence in suggestions:

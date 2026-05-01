@@ -47,7 +47,10 @@ const Dashboard = () => {
       const a = document.createElement('a');
       a.href = url;
       a.download = `horario_${scheduleId}.json`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
       toast.success('Horario exportado exitosamente');
     } catch (error) {
       console.error('Error exporting schedule:', error);

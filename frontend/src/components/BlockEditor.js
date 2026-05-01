@@ -6,6 +6,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from './ui/dialog';
 import { Button } from './ui/button';
@@ -183,6 +184,9 @@ const BlockEditor = ({ block, onClose }) => {
             <span>Editar Bloque</span>
             {getStatusBadge()}
           </DialogTitle>
+          <DialogDescription>
+            Edita la información del bloque de clase. Los cambios se guardarán con estado confirmado.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
