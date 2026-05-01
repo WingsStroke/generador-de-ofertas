@@ -1,0 +1,347 @@
+{
+    "fundamentos_de_matematicas_cfbd001": {
+        "nombre_oficial": "Fundamentos de Matemáticas",
+        "codigo": "CFBD001",
+        "creditos": 2
+    },
+    "calculo_diferencial_cfbd002": {
+        "nombre_oficial": "Cálculo Diferencial",
+        "codigo": "CFBD002",
+        "creditos": 3
+    },
+    "quimica_general_y_laboratorio_cfbd003": {
+        "nombre_oficial": "Química General y Laboratorio",
+        "codigo": "CFBD003",
+        "creditos": 3
+    },
+    "introduccion_a_la_ingenieria_cfbd004": {
+        "nombre_oficial": "Introducción a la Ingeniería",
+        "codigo": "CFBD004",
+        "creditos": 1
+    },
+    "expresion_grafica_cfbd005": {
+        "nombre_oficial": "Expresión Gráfica",
+        "codigo": "CFBD005",
+        "creditos": 3
+    },
+    "calculo_integral_cfbd221": {
+        "nombre_oficial": "Cálculo Integral",
+        "codigo": "CFBD221",
+        "creditos": 3
+    },
+    "algebra_lineal_cfbd222": {
+        "nombre_oficial": "Algebra Lineal",
+        "codigo": "CFBD222",
+        "creditos": 3
+    },
+    "fisica_mecanica_y_laboratorio_cfbd223": {
+        "nombre_oficial": "Física Mecánica y Laboratorio",
+        "codigo": "CFBD223",
+        "creditos": 4
+    },
+    "programacion_cfbd286": {
+        "nombre_oficial": "Programación",
+        "codigo": "CFBD286",
+        "creditos": 3
+    },
+    "calculo_vectorial_cfbd286": {
+        "nombre_oficial": "Cálculo Vectorial",
+        "codigo": "CFBD286",
+        "creditos": 3
+    },
+    "electromagnetismo_y_laboratorio_cfbd226": {
+        "nombre_oficial": "Electromagnetismo y Laboratorio",
+        "codigo": "CFBD226",
+        "creditos": 3
+    },
+    "fundamentos_de_ecologia_y_medio_ambiente_cfp2231": {
+        "nombre_oficial": "Fundamentos de Ecología y Medio Ambiente",
+        "codigo": "CFP2231",
+        "creditos": 2
+    },
+    "quimica_de_materiales_cfbd287": {
+        "nombre_oficial": "Química de Materiales",
+        "codigo": "CFBD287",
+        "creditos": 3
+    },
+    "probabilidad_y_estadistica_cfbd227": {
+        "nombre_oficial": "Probabilidad y Estadística",
+        "codigo": "CFBD227",
+        "creditos": 2
+    },
+    "ecuaciones_diferenciales_cfbd228": {
+        "nombre_oficial": "Ecuaciones Diferenciales",
+        "codigo": "CFBD228",
+        "creditos": 3
+    },
+    "fisica_de_ondas_y_calor_cfbd229": {
+        "nombre_oficial": "Física de Ondas y Calor",
+        "codigo": "CFBD229",
+        "creditos": 3
+    },
+    "produccion_y_comprension_textual_i_fn23001": {
+        "nombre_oficial": "Producción y Comprensión Textual I",
+        "codigo": "FN23001",
+        "creditos": 2
+    },
+    "catedra_institucional_fn23002": {
+        "nombre_oficial": "Cátedra Institucional",
+        "codigo": "FN23002",
+        "creditos": 2
+    },
+    "ingles_i_fn23003": {
+        "nombre_oficial": "Inglés I",
+        "codigo": "FN23003",
+        "creditos": 2
+    },
+    "produccion_y_comprension_textua_ii_fn23004": {
+        "nombre_oficial": "Producción y Comprensión Textua II",
+        "codigo": "FN23004",
+        "creditos": 2
+    },
+    "ingles_ii_fn24033": {
+        "nombre_oficial": "Inglés II",
+        "codigo": "FN24033",
+        "creditos": 2
+    },
+    "ingles_iii_fn24035": {
+        "nombre_oficial": "Inglés III",
+        "codigo": "FN24035",
+        "creditos": 2
+    },
+    "ingles_iv_fn24036": {
+        "nombre_oficial": "Inglés IV",
+        "codigo": "FN24036",
+        "creditos": 2
+    },
+    "redaccion_de_documentos_cientificos_fn23010": {
+        "nombre_oficial": "Redacción de Documentos Científicos",
+        "codigo": "FN23010",
+        "creditos": 2
+    },
+    "ingles_v_fn24037": {
+        "nombre_oficial": "Inglés V",
+        "codigo": "FN24037",
+        "creditos": 2
+    },
+    "ingles_vi_fn24038": {
+        "nombre_oficial": "Inglés VI",
+        "codigo": "FN24038",
+        "creditos": 2
+    },
+    "constitucion_y_etica_fn23013": {
+        "nombre_oficial": "Constitución y Ética",
+        "codigo": "FN23013",
+        "creditos": 2
+    },
+    "diseno_asistido_por_computador_cfp2101": {
+        "nombre_oficial": "Diseño Asistido Por Computador",
+        "codigo": "CFP2101",
+        "creditos": 2
+    },
+    "topografia_y_practicas_cfp2102": {
+        "nombre_oficial": "Topografía y Prácticas",
+        "codigo": "CFP2102",
+        "creditos": 3
+    },
+    "sistemas_de_informacion_geografica_cfp287": {
+        "nombre_oficial": "Sistemas de Información Geográfica",
+        "codigo": "CFP287",
+        "creditos": 3
+    },
+    "estatica_cfp289": {
+        "nombre_oficial": "Estática",
+        "codigo": "CFP289",
+        "creditos": 3
+    },
+    "geologia_cfp290": {
+        "nombre_oficial": "Geología",
+        "codigo": "CFP290",
+        "creditos": 3
+    },
+    "electiva_de_investigacion_cfp288": {
+        "nombre_oficial": "Electiva de Investigación",
+        "codigo": "CFP288",
+        "creditos": 2
+    },
+    "mecanica_de_fluidos_cfp291": {
+        "nombre_oficial": "Mecánica de Fluidos",
+        "codigo": "CFP291",
+        "creditos": 3
+    },
+    "resistencia_de_materiales_cfp292": {
+        "nombre_oficial": "Resistencia de Materiales",
+        "codigo": "CFP292",
+        "creditos": 3
+    },
+    "hormigon_y_laboratorio_cfp293": {
+        "nombre_oficial": "Hormigón y Laboratorio",
+        "codigo": "CFP293",
+        "creditos": 3
+    },
+    "ingenieria_de_transito_cfp294": {
+        "nombre_oficial": "Ingeniería de Tránsito",
+        "codigo": "CFP294",
+        "creditos": 3
+    },
+    "hidraulica_y_laboratorio_cfp295": {
+        "nombre_oficial": "Hidráulica y Laboratorio",
+        "codigo": "CFP295",
+        "creditos": 3
+    },
+    "analisis_estructural_cfp296": {
+        "nombre_oficial": "Análisis Estructural",
+        "codigo": "CFP296",
+        "creditos": 3
+    },
+    "metodos_numericos_cfp297": {
+        "nombre_oficial": "Métodos Numéricos",
+        "codigo": "CFP297",
+        "creditos": 3
+    },
+    "geotecnia_y_laboratorio_cfp298": {
+        "nombre_oficial": "Geotecnia y Laboratorio",
+        "codigo": "CFP298",
+        "creditos": 4
+    },
+    "diseno_geometrico_de_vias_cfp299": {
+        "nombre_oficial": "Diseño Geométrico de Vías",
+        "codigo": "CFP299",
+        "creditos": 3
+    },
+    "hidrologia_cfp2100": {
+        "nombre_oficial": "Hidrología",
+        "codigo": "CFP2100",
+        "creditos": 3
+    },
+    "acueducto_cfp2110": {
+        "nombre_oficial": "Acueducto",
+        "codigo": "CFP2110",
+        "creditos": 3
+    },
+    "concreto_armado_cfp2111": {
+        "nombre_oficial": "Concreto Armado",
+        "codigo": "CFP2111",
+        "creditos": 3
+    },
+    "administracion_cfp2112": {
+        "nombre_oficial": "Administración",
+        "codigo": "CFP2112",
+        "creditos": 3
+    },
+    "metodos_avanzados_de_analisis_estructural_cfp2113": {
+        "nombre_oficial": "Métodos Avanzados de Análisis Estructural",
+        "codigo": "CFP2113",
+        "creditos": 2
+    },
+    "taller_de_proyeccion_social_cfp2114": {
+        "nombre_oficial": "Taller de Proyeccion Social",
+        "codigo": "CFP2114",
+        "creditos": 2
+    },
+    "alcantarillado_cfp2115": {
+        "nombre_oficial": "Alcantarillado",
+        "codigo": "CFP2115",
+        "creditos": 2
+    },
+    "cimentaciones_cfp2116": {
+        "nombre_oficial": "Cimentaciones",
+        "codigo": "CFP2116",
+        "creditos": 4
+    },
+    "construcciones_civiles_cfp2117": {
+        "nombre_oficial": "Construcciones Civiles",
+        "codigo": "CFP2117",
+        "creditos": 3
+    },
+    "pavimentos_y_laboratorio_cfp2118": {
+        "nombre_oficial": "Pavimentos y Laboratorio",
+        "codigo": "CFP2118",
+        "creditos": 3
+    },
+    "ingenieria_economica_cfp2119": {
+        "nombre_oficial": "Ingeniería Económica",
+        "codigo": "CFP2119",
+        "creditos": 2
+    },
+    "electiva_de_profundizacion_profesional_cfp2120": {
+        "nombre_oficial": "Electiva de Profundización Profesional",
+        "codigo": "CFP2120",
+        "creditos": 2
+    },
+    "propuesta_de_trabajo_de_grado_cfp2121": {
+        "nombre_oficial": "Propuesta de Trabajo de Grado",
+        "codigo": "CFP2121",
+        "creditos": 2
+    },
+    "saneamiento_ambiental_y_laboratorio_cfp2122": {
+        "nombre_oficial": "Saneamiento Ambiental y Laboratorio",
+        "codigo": "CFP2122",
+        "creditos": 3
+    },
+    "legislacion_y_contratacion_cfp2124": {
+        "nombre_oficial": "Legislación y Contratación",
+        "codigo": "CFP2124",
+        "creditos": 2
+    },
+    "planeacion_y_control_de_obra_cfp2123": {
+        "nombre_oficial": "Planeación y Control de Obra",
+        "codigo": "CFP2123",
+        "creditos": 3
+    },
+    "proyecto_de_ingenieria_cfp2125": {
+        "nombre_oficial": "Proyecto de Ingeniería",
+        "codigo": "CFP2125",
+        "creditos": 3
+    },
+    "electiva_de_profundizacion_profesional_cfp2126": {
+        "nombre_oficial": "Electiva de Profundización Profesional",
+        "codigo": "CFP2126",
+        "creditos": 2
+    },
+    "trabajo_de_grado_cfp2127": {
+        "nombre_oficial": "Trabajo de Grado",
+        "codigo": "CFP2127",
+        "creditos": 3
+    },
+    "problemas_contemporaneos_de_la_ingenieria_cfp2128": {
+        "nombre_oficial": "Problemas Contemporáneos de la Ingeniería",
+        "codigo": "CFP2128",
+        "creditos": 2
+    },
+    "electiva_de_profundizacion_profesional_cfp2129": {
+        "nombre_oficial": "Electiva de Profundización Profesional",
+        "codigo": "CFP2129",
+        "creditos": 2
+    },
+    "electiva_de_profundizacion_profesional_cfp2130": {
+        "nombre_oficial": "Electiva de Profundización Profesional",
+        "codigo": "CFP2130",
+        "creditos": 2
+    },
+    "electiva_de_profundizacion_de_postgrado_cfp2131": {
+        "nombre_oficial": "Electiva de Profundización de Postgrado",
+        "codigo": "CFP2131",
+        "creditos": 2
+    },
+    "curso_de_formacion_complemetaria_i_fc72731": {
+        "nombre_oficial": "Curso de Formacion Complemetaria I",
+        "codigo": "FC72731",
+        "creditos": 2
+    },
+    "curso_de_formacion_complemetaria_ii_fc72737": {
+        "nombre_oficial": "Curso de Formacion Complemetaria II",
+        "codigo": "FC72737",
+        "creditos": 2
+    },
+    "curso_de_formacion_complemetaria_iii_fc72738": {
+        "nombre_oficial": "Curso de Formacion Complemetaria III",
+        "codigo": "FC72738",
+        "creditos": 2
+    },
+    "curso_de_formacion_complemetaria_iv_fc72739": {
+        "nombre_oficial": "Curso de Formacion Complemetaria IV",
+        "codigo": "FC72739",
+        "creditos": 2
+    }
+}

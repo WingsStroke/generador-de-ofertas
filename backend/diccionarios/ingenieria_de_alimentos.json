@@ -1,0 +1,342 @@
+{
+    "fundamentos_de_matematicas": {
+        "nombre_oficial": "Fundamentos de Matemáticas",
+        "codigo": null,
+        "creditos": 2
+    },
+    "calculo_diferencial": {
+        "nombre_oficial": "Cálculo Diferencial",
+        "codigo": null,
+        "creditos": 3
+    },
+    "quimica_general_y_laboratorio": {
+        "nombre_oficial": "Química General y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "calculo_integral": {
+        "nombre_oficial": "Cálculo Integral",
+        "codigo": null,
+        "creditos": 3
+    },
+    "algebra_lineal": {
+        "nombre_oficial": "Álgebra Lineal",
+        "codigo": null,
+        "creditos": 3
+    },
+    "fisica_mecanica_y_laboratorio": {
+        "nombre_oficial": "Física Mecánica y Laboratorio",
+        "codigo": null,
+        "creditos": 4
+    },
+    "quimica_organica_y_laboratorio": {
+        "nombre_oficial": "Química Orgánica y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "calculo_vectorial": {
+        "nombre_oficial": "Cálculo Vectorial",
+        "codigo": null,
+        "creditos": 3
+    },
+    "biologia_aplicada_y_laboratorio": {
+        "nombre_oficial": "Biología Aplicada y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "electromagnetismo_y_laboratorio": {
+        "nombre_oficial": "Electromagnetismo y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "informatica_y_programacion": {
+        "nombre_oficial": "Informática y Programación",
+        "codigo": null,
+        "creditos": 2
+    },
+    "fundamentos_de_ecologia_y_contaminacion": {
+        "nombre_oficial": "Fundamentos de Ecología y Contaminación",
+        "codigo": null,
+        "creditos": 2
+    },
+    "ecuaciones_diferenciales": {
+        "nombre_oficial": "Ecuaciones Diferenciales",
+        "codigo": null,
+        "creditos": 3
+    },
+    "probabilidad_y_estadistica": {
+        "nombre_oficial": "Probabilidad y Estadística",
+        "codigo": null,
+        "creditos": 2
+    },
+    "microbiologia_general_y_laboratorio": {
+        "nombre_oficial": "Microbiología General y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "produccion_y_comprension_textual_i": {
+        "nombre_oficial": "Producción y Comprensión Textual I",
+        "codigo": null,
+        "creditos": 2
+    },
+    "produccion_y_comprension_textual_ii": {
+        "nombre_oficial": "Producción y Comprensión Textual II",
+        "codigo": null,
+        "creditos": 2
+    },
+    "catedra_institucional": {
+        "nombre_oficial": "Catedra Institucional",
+        "codigo": null,
+        "creditos": 2
+    },
+    "ingles_i": {
+        "nombre_oficial": "Ingles I",
+        "codigo": null,
+        "creditos": 2
+    },
+    "ingles_ii": {
+        "nombre_oficial": "Ingles II",
+        "codigo": null,
+        "creditos": 2
+    },
+    "ingles_iii": {
+        "nombre_oficial": "Ingles III",
+        "codigo": null,
+        "creditos": 2
+    },
+    "ingles_iv": {
+        "nombre_oficial": "Ingles IV",
+        "codigo": null,
+        "creditos": 2
+    },
+    "ingles_v": {
+        "nombre_oficial": "Ingles V",
+        "codigo": null,
+        "creditos": 2
+    },
+    "ingles_vi": {
+        "nombre_oficial": "Ingles VI",
+        "codigo": null,
+        "creditos": 2
+    },
+    "constitucion_y_etica": {
+        "nombre_oficial": "Constitución y Ética",
+        "codigo": null,
+        "creditos": 2
+    },
+    "curso_de_formacion_complementaria": {
+        "nombre_oficial": "Curso de Formación Complementaria",
+        "codigo": null,
+        "creditos": 2
+    },
+    "introduccion_a_la_ingenieria_de_alimentos": {
+        "nombre_oficial": "Introducción a la Ingeniería de Alimentos",
+        "codigo": null,
+        "creditos": 2
+    },
+    "bioquimica_de_alimentos_y_laboratorio": {
+        "nombre_oficial": "Bioquímica de Alimentos y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "termodinamica_general": {
+        "nombre_oficial": "Termodinamica General",
+        "codigo": null,
+        "creditos": 2
+    },
+    "quimica_de_alimentos_y_laboratorio": {
+        "nombre_oficial": "Química de Alimentos y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "analisis_de_alimentos_y_laboratorio": {
+        "nombre_oficial": "Análisis de Alimentos y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "metodologia_de_la_investigacion": {
+        "nombre_oficial": "Metodología de la Investigación",
+        "codigo": null,
+        "creditos": 2
+    },
+    "balance_de_materia_y_energia": {
+        "nombre_oficial": "Balance de Materia y Energía",
+        "codigo": null,
+        "creditos": 3
+    },
+    "fisicoquimica_y_laboratorio": {
+        "nombre_oficial": "Fisicoquímica y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "mecanica_de_fluidos_y_laboratorio": {
+        "nombre_oficial": "Mecánica de Fluidos y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "admisnitraion_general": {
+        "nombre_oficial": "Admisnitraión General",
+        "codigo": null,
+        "creditos": 2
+    },
+    "diseno_de_experimentos": {
+        "nombre_oficial": "Diseño de Experimentos",
+        "codigo": null,
+        "creditos": 2
+    },
+    "microbiologia_de_alimentos_y_laboratorio": {
+        "nombre_oficial": "Microbiología de Alimentos y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "transferencia_de_calor_y_laboratorio": {
+        "nombre_oficial": "Transferencia de Calor y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "reologia_y_textura_de_alimentos_y_laboratorio": {
+        "nombre_oficial": "Reología y Textura de Alimentos y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "metodos_y_tiempos_de_trabajo": {
+        "nombre_oficial": "Métodos y Tiempos de Trabajo",
+        "codigo": null,
+        "creditos": 2
+    },
+    "contabilidad_y_costos": {
+        "nombre_oficial": "Contabilidad y Costos",
+        "codigo": null,
+        "creditos": 2
+    },
+    "ciencia_y_tecnologia_de_carnes_y_laboratorio": {
+        "nombre_oficial": "Ciencia y Tecnología de Carnes y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "ciencia_y_tecnologia_de_pescados_y_laboratorio": {
+        "nombre_oficial": "Ciencia y Tecnología de Pescados y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "operaciones_unitarias_i_y_laboratorio": {
+        "nombre_oficial": "Operaciones Unitarias I y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "normas_y_regulacion_de_alimentos": {
+        "nombre_oficial": "Normas y Regulación de Alimentos",
+        "codigo": null,
+        "creditos": 2
+    },
+    "nutricion": {
+        "nombre_oficial": "Nutrición",
+        "codigo": null,
+        "creditos": 2
+    },
+    "evaluacion_sensorial_y_laboratorio": {
+        "nombre_oficial": "Evaluación Sensorial y Laboratorio",
+        "codigo": null,
+        "creditos": 2
+    },
+    "ingenieria_economica": {
+        "nombre_oficial": "Ingeniería Económica",
+        "codigo": null,
+        "creditos": 2
+    },
+    "ciencia_y_tecnologia_de_frutas_y_hortalizas_y_laboratorio": {
+        "nombre_oficial": "Ciencia y Tecnología de Frutas y Hortalizas y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "operaciones_unitarias_ii_y_laboratorio": {
+        "nombre_oficial": "Operaciones Unitarias II y laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "biotecnologia_y_laboratorio": {
+        "nombre_oficial": "Biotecnología y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "control_de_procesos_industriales": {
+        "nombre_oficial": "Control de Procesos Industriales",
+        "codigo": null,
+        "creditos": 2
+    },
+    "sistemas_de_aseguramiento_de_la_calidad": {
+        "nombre_oficial": "Sistemas de Aseguramiento de la Calidad",
+        "codigo": null,
+        "creditos": 2
+    },
+    "investigacion_de_mercados": {
+        "nombre_oficial": "Investigación de Mercados",
+        "codigo": null,
+        "creditos": 2
+    },
+    "ciencia_y_tecnologia_de_cereales_y_oleaginosas_y_laboratorio": {
+        "nombre_oficial": "Ciencia y Tecnología de Cereales y Oleaginosas y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "desarrollo_empresarial": {
+        "nombre_oficial": "Desarrollo Empresarial",
+        "codigo": null,
+        "creditos": 2
+    },
+    "diseno_de_planta_de_alimentos": {
+        "nombre_oficial": "Diseño de Planta de Alimentos",
+        "codigo": null,
+        "creditos": 3
+    },
+    "materiales_y_empaques": {
+        "nombre_oficial": "Materiales y Empaques",
+        "codigo": null,
+        "creditos": 2
+    },
+    "seminario_de_investigacion": {
+        "nombre_oficial": "Seminario de Investigación",
+        "codigo": null,
+        "creditos": 2
+    },
+    "ciencia_y_tecnologia_de_lacteos_y_laboratorio": {
+        "nombre_oficial": "Ciencia y Tecnología de Lácteos y Laboratorio",
+        "codigo": null,
+        "creditos": 3
+    },
+    "evaluacion_y_formulacion_de_proyectos_de_ingenieria": {
+        "nombre_oficial": "Evaluación y Formulación de Proyectos de Ingeniería",
+        "codigo": null,
+        "creditos": 2
+    },
+    "trabajo_de_grado": {
+        "nombre_oficial": "Trabajo de Grado",
+        "codigo": null,
+        "creditos": 2
+    },
+    "practicas_empresariales": {
+        "nombre_oficial": "Practicas Empresariales",
+        "codigo": null,
+        "creditos": 8
+    },
+    "electiva_de_formacion_profesional_i": {
+        "nombre_oficial": "Electiva de Formación Profesional I",
+        "codigo": null,
+        "creditos": 2
+    },
+    "electiva_de_formacion_profesional_ii": {
+        "nombre_oficial": "Electiva de Formación Profesional II",
+        "codigo": null,
+        "creditos": 2
+    },
+    "electiva_de_formacion_profesional_iii": {
+        "nombre_oficial": "Electiva de Formación Profesional III",
+        "codigo": null,
+        "creditos": 2
+    },
+    "electiva_de_formacion_profesional_iv": {
+        "nombre_oficial": "Electiva de Formación Profesional IV",
+        "codigo": null,
+        "creditos": 2
+    }
+}

@@ -5,7 +5,7 @@ Sistema completo para extracción, visualización, corrección y exportación de
 ## Características Principales
 
 ### Múltiples Programas Académicos
-- **Soporte para 4 carreras**: Ingeniería de Sistemas (66 materias), Medicina (18), Administración de Empresas (14), Derecho (15)
+- **Soporte para 4 carreras de ingeniería**: Sistemas (66 materias), Alimentos (68), Civil (69), Química (66)
 - **Selector de programa**: Elige el programa antes de subir el archivo
 - **Diccionarios específicos**: Cada programa tiene su propio diccionario de materias
 - **Fuzzy matching contextual**: Búsqueda de materias según el programa seleccionado
@@ -111,34 +111,35 @@ El sistema calcula niveles de confianza para cada bloque:
 
 ## Diccionarios Académicos
 
-El sistema incluye 4 programas académicos con sus respectivos planes de estudio:
+El sistema incluye 4 programas de ingeniería con sus respectivos planes de estudio:
 
 ### Ingeniería de Sistemas (66 materias)
-- Matemáticas y ciencias básicas
-- Programación y desarrollo de software
-- Redes y telecomunicaciones
-- Bases de datos y sistemas
-- Inteligencia artificial y machine learning
+- Matemáticas y ciencias básicas: Cálculo, Álgebra, Estadística, Física
+- Programación y desarrollo: Algoritmos, POO, Estructuras de Datos, Desarrollo Web
+- Redes y telecomunicaciones: Redes, Sistemas Distribuidos, Seguridad
+- Bases de datos y sistemas: BD, Arquitectura de Software, Sistemas Operativos
+- Inteligencia artificial: Machine Learning, Procesamiento de Lenguaje Natural
 
-### Medicina (18 materias)
-- Ciencias básicas médicas (Anatomía, Fisiología, Bioquímica)
-- Ciencias clínicas (Medicina Interna, Cirugía, Pediatría)
-- Especialidades (Ginecología, Psiquiatría, Radiología)
-- Salud pública y medicina legal
+### Ingeniería de Alimentos (68 materias)
+- Ciencias básicas: Química General, Orgánica, Analítica, Bioquímica
+- Microbiología: Microbiología General y de Alimentos
+- Procesos: Ingeniería de Procesos, Operaciones Unitarias
+- Tecnología de alimentos: Conservación, Procesamiento, Control de Calidad
+- Nutrición y análisis: Bromatología, Análisis de Alimentos
 
-### Administración de Empresas (14 materias)
-- Fundamentos administrativos y contables
-- Gestión del talento humano
-- Finanzas y mercadeo
-- Estrategia y operaciones
-- Emprendimiento e innovación
+### Ingeniería Civil (69 materias)
+- Matemáticas y física: Cálculo, Mecánica, Resistencia de Materiales
+- Estructuras: Análisis Estructural, Diseño de Estructuras
+- Materiales: Materiales de Construcción, Tecnología del Concreto
+- Geotecnia: Mecánica de Suelos, Cimentaciones
+- Hidráulica: Hidráulica, Acueductos, Alcantarillado
 
-### Derecho (15 materias)
-- Derecho constitucional y civil
-- Derecho penal y procesal
-- Derecho laboral y comercial
-- Derecho administrativo e internacional
-- Ética y clínica jurídica
+### Ingeniería Química (66 materias)
+- Química fundamental: Química General, Orgánica, Analítica, Fisicoquímica
+- Termodinámica: Termodinámica General, Aplicada
+- Procesos: Balance de Materia y Energía, Operaciones Unitarias
+- Reactores: Cinética, Diseño de Reactores
+- Control: Instrumentación, Control de Procesos
 
 ## Diccionario Académico
 

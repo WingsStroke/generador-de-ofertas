@@ -42,9 +42,9 @@ def load_academic_programs():
     
     programa_names = {
         "ingenieria_de_sistemas": "Ingeniería de Sistemas",
-        "derecho": "Derecho",
-        "medicina": "Medicina",
-        "administracion_empresas": "Administración de Empresas"
+        "ingenieria_de_alimentos": "Ingeniería de Alimentos",
+        "ingenieria_civil": "Ingeniería Civil",
+        "ingenieria_quimica": "Ingeniería Química"
     }
     
     for dict_file in DICCIONARIOS_DIR.glob("*.json"):
