@@ -22,19 +22,26 @@ Sistema completo para extracción, visualización, corrección y exportación de
 - **Panel dual sincronizado**:
   - Izquierda: Grid editable del horario procesado
   - Derecha: Vista del archivo Excel original
+- **Sistema de pestañas**: Navegación entre todas las hojas/semestres del Excel
 - **Estados visuales**: Confirmado (verde), Inferido (amarillo), Error (rojo), Desconocido (gris)
 - **Sincronización**: Al seleccionar una celda se resalta en ambos paneles
+- **Múltiples bloques**: Botón "+N más" para expandir/colapsar celdas con varios grupos
+- **Historial Undo/Redo**: Ctrl+Z para deshacer, Ctrl+Shift+Z para rehacer
+- **Indicador de cambios**: Badge "Sin guardar" cuando hay modificaciones pendientes
 
 ### Editor de Bloques
 - **Edición estructurada**: Modifica materia, grupo, docente y aula
 - **Autocompletado inteligente**: Sugerencias con fuzzy matching del diccionario
 - **Validación en tiempo real**: Nivel de confianza y estado visual
 - **Operaciones**: Editar, guardar, eliminar bloques
+- **Drag & Drop**: Arrastra bloques entre celdas para reorganizar horarios
+- **Expansión de celdas**: Ver todos los grupos cuando hay múltiples en misma celda
 
 ### Exportación
 - **Formato JSON estructurado**: Compatible con el formato especificado
-- **Metadatos completos**: Versión, programa, fecha, totales
-- **Organización por semestres**: Asignaturas → Grupos → Horarios
+- **Multi-hoja**: Exporta datos de todas las hojas/semestres en un solo archivo
+- **Metadatos completos**: Versión, programa, fecha, totales por hoja
+- **Organización jerárquica**: Hojas → Semestres → Asignaturas → Grupos → Horarios
 
 ## Tecnologías
 

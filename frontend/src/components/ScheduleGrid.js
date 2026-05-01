@@ -17,6 +17,7 @@ const ScheduleGrid = () => {
   const { pushAction } = useHistory();
   const [editingBlock, setEditingBlock] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [expandedCells, setExpandedCells] = useState(new Set());
 
   if (!scheduleData) return null;
 
@@ -42,6 +43,21 @@ const ScheduleGrid = () => {
       setEditingBlock(block);
     }
   };
+
+  const toggleCellExpansion = (cellId, e) => {
+    e.stopPropagation();
+    setExpandedCells((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(cellId)) {
+        newSet.delete(cellId);
+      } else {
+        newSet.add(cellId);
+      }
+      return newSet;
+    });
+  };
+
+  const isCellExpanded = (cellId) => expandedCells.has(cellId);
 
   const onDragStart = () => {
     setIsDragging(true);
@@ -186,54 +202,86 @@ const ScheduleGrid = () => {
                       data-testid={`schedule-cell-${dia}-${hora.inicio}`}
                     >
                       <Droppable droppableId={cellId}>
-                        {(provided, snapshot) => (
-                          <div
-                            ref={provided.innerRef}
-                            {...provided.droppableProps}
-                            className={`min-h-[60px] ${
-                              snapshot.isDraggingOver ? 'bg-blue-50' : ''
-                            }`}
-                          >
-                            {cellData?.bloques.map((block, index) => (
-                              <Draggable
-                                key={block.id}
-                                draggableId={block.id}
-                                index={index}
-                              >
-                                {(provided, snapshot) => (
-                                  <div
-                                    ref={provided.innerRef}
-                                    {...provided.draggableProps}
-                                    {...provided.dragHandleProps}
-                                    className={`${getBlockClass(block.estado)} ${
-                                      snapshot.isDragging ? 'shadow-lg' : ''
-                                    }`}
-                                    onClick={(e) => handleBlockClick(block, e)}
-                                    data-testid={`block-${block.id}`}
-                                  >
-                                    <div className="font-medium text-slate-900">
-                                      {block.materia}
+                        {(provided, snapshot) => {
+                          const bloques = cellData?.bloques || [];
+                          const hasMultipleBlocks = bloques.length > 1;
+                          const isExpanded = isCellExpanded(cellId);
+                          const displayBlocks = isExpanded ? bloques : bloques.slice(0, 1);
+                          
+                          return (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.droppableProps}
+                              className={`min-h-[60px] ${
+                                snapshot.isDraggingOver ? 'bg-blue-50' : ''
+                              }`}
+                            >
+                              {displayBlocks.map((block, index) => (
+                                <Draggable
+                                  key={block.id}
+                                  draggableId={block.id}
+                                  index={index}
+                                >
+                                  {(provided, snapshot) => (
+                                    <div
+                                      ref={provided.innerRef}
+                                      {...provided.draggableProps}
+                                      {...provided.dragHandleProps}
+                                      className={`${getBlockClass(block.estado)} ${
+                                        snapshot.isDragging ? 'shadow-lg' : ''
+                                      }`}
+                                      onClick={(e) => handleBlockClick(block, e)}
+                                      data-testid={`block-${block.id}`}
+                                    >
+                                      <div className="font-medium text-slate-900">
+                                        {block.materia}
+                                      </div>
+                                      {block.grupo && (
+                                        <div className="text-slate-600">({block.grupo})</div>
+                                      )}
+                                      {block.docente && (
+                                        <div className="text-slate-600 text-[10px] mt-1">
+                                          {block.docente}
+                                        </div>
+                                      )}
+                                      {block.aula && (
+                                        <div className="text-slate-500 text-[10px]">
+                                          {block.aula}
+                                        </div>
+                                      )}
                                     </div>
-                                    {block.grupo && (
-                                      <div className="text-slate-600">({block.grupo})</div>
-                                    )}
-                                    {block.docente && (
-                                      <div className="text-slate-600 text-[10px] mt-1">
-                                        {block.docente}
-                                      </div>
-                                    )}
-                                    {block.aula && (
-                                      <div className="text-slate-500 text-[10px]">
-                                        {block.aula}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </Draggable>
-                            ))}
-                            {provided.placeholder}
-                          </div>
-                        )}
+                                  )}
+                                </Draggable>
+                              ))}
+                              
+                              {hasMultipleBlocks && (
+                                <button
+                                  onClick={(e) => toggleCellExpansion(cellId, e)}
+                                  className="w-full mt-1 px-2 py-1 text-[10px] font-medium text-blue-600 hover:bg-blue-50 rounded border border-blue-200 transition-colors flex items-center justify-center gap-1"
+                                  data-testid={`expand-btn-${cellId}`}
+                                >
+                                  {isExpanded ? (
+                                    <>
+                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                      </svg>
+                                      Ocultar
+                                    </>
+                                  ) : (
+                                    <>
+                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                      </svg>
+                                      +{bloques.length - 1} más
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                              
+                              {provided.placeholder}
+                            </div>
+                          );
+                        }}
                       </Droppable>
                     </td>
                   );
