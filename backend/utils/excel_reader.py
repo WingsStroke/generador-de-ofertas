@@ -25,40 +25,56 @@ class ExcelReader:
     def detect_schedule_structure(self) -> Tuple[int, int, List[str], List[Tuple[str, str]]]:
         """Detecta la estructura del horario: fila inicio, columna inicio, días, horas"""
         dias_semana = ["LUNES", "MARTES", "MIÉRCOLES", "MIERCOLES", "JUEVES", "VIERNES", "SÁBADO", "SABADO", "HORA"]
-        
+
+        def _matches_keyword(text: str, keyword: str) -> bool:
+            """Match keyword as a standalone word (avoids 'HORARIO' matching 'HORA')."""
+            return re.search(rf'\b{re.escape(keyword)}\b', text) is not None
+
         start_row = None
         start_col = None
         dias_encontrados = []
-        
+
+        # Pick the row that contains the MOST day-keyword cells (header row likely has 5+ days)
+        best_row = None
+        best_count = 0
+        best_first_col = None
         for row_idx, row in enumerate(self.current_sheet.iter_rows(max_row=20), 1):
+            row_count = 0
+            first_match_col = None
             for col_idx, cell in enumerate(row, 1):
                 if cell.value and isinstance(cell.value, str):
                     cell_upper = cell.value.strip().upper()
-                    if any(dia in cell_upper for dia in dias_semana):
-                        start_row = row_idx
-                        start_col = col_idx
-                        break
-            if start_row:
-                break
-        
+                    if any(_matches_keyword(cell_upper, dia) for dia in dias_semana):
+                        row_count += 1
+                        if first_match_col is None:
+                            first_match_col = col_idx
+            if row_count > best_count:
+                best_count = row_count
+                best_row = row_idx
+                best_first_col = first_match_col
+
+        if best_row and best_count >= 2:
+            start_row = best_row
+            start_col = best_first_col
+
         if not start_row:
             start_row = 1
             start_col = 1
-        
+
         for cell in self.current_sheet[start_row]:
             if cell.value and isinstance(cell.value, str):
                 val_upper = cell.value.strip().upper()
                 for dia in ["LUNES", "MARTES", "MIÉRCOLES", "MIERCOLES", "JUEVES", "VIERNES", "SÁBADO", "SABADO"]:
-                    if dia in val_upper:
+                    if _matches_keyword(val_upper, dia):
                         dia_corto = self._dia_to_short(dia)
                         if dia_corto not in dias_encontrados:
                             dias_encontrados.append(dia_corto)
-        
+
         if not dias_encontrados:
             dias_encontrados = ["L", "M", "W", "J", "V"]
-        
+
         horas = self._extract_time_slots(start_row + 1)
-        
+
         return start_row, start_col, dias_encontrados, horas
     
     def _dia_to_short(self, dia: str) -> str:
