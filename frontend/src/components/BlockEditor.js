@@ -43,8 +43,9 @@ const BlockEditor = ({ block, onClose }) => {
 
       setSearching(true);
       try {
+        const programId = scheduleData?.programa_id || 'ingenieria_de_sistemas';
         const response = await axios.get(
-          `${API}/subjects/search/${encodeURIComponent(formData.materia)}`
+          `${API}/subjects/search/${encodeURIComponent(formData.materia)}?program_id=${programId}`
         );
         setSuggestions(response.data);
       } catch (error) {
@@ -56,7 +57,7 @@ const BlockEditor = ({ block, onClose }) => {
 
     const timer = setTimeout(searchSubjects, 300);
     return () => clearTimeout(timer);
-  }, [formData.materia]);
+  }, [formData.materia, scheduleData]);
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));

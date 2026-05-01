@@ -53,13 +53,22 @@ class ProcessedSchedule(BaseModel):
     id: str
     nombre_archivo: str
     fecha_procesamiento: datetime
-    programa: Optional[str] = None
+    programa_id: str
+    programa_nombre: str
     semestre: Optional[str] = None
     celdas: List[ScheduleCell] = []
     estructura_dias: List[str] = []
     estructura_horas: List[Dict[str, str]] = []
     excel_preview: List[ExcelCell] = []
     nivel_confianza_global: float = 0.0
+
+class ProgramaAcademico(BaseModel):
+    """Programa académico disponible"""
+    model_config = ConfigDict(extra="ignore")
+    
+    id: str
+    nombre: str
+    total_materias: int
 
 class UploadResponse(BaseModel):
     """Respuesta al subir un archivo"""

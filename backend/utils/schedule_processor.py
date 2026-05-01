@@ -18,7 +18,7 @@ class ScheduleProcessor:
         self.subject_dict = subject_dict
         self.matcher = SubjectMatcher(subject_dict)
     
-    def process_file(self, file_path: str, filename: str) -> ProcessedSchedule:
+    def process_file(self, file_path: str, filename: str, programa_id: str = None, programa_nombre: str = None) -> ProcessedSchedule:
         """Procesa un archivo Excel completo"""
         reader = ExcelReader(file_path)
         
@@ -52,6 +52,8 @@ class ScheduleProcessor:
                 id=str(uuid.uuid4()),
                 nombre_archivo=filename,
                 fecha_procesamiento=datetime.now(timezone.utc),
+                programa_id=programa_id or "unknown",
+                programa_nombre=programa_nombre or "Programa Desconocido",
                 celdas=processed_cells,
                 estructura_dias=dias,
                 estructura_horas=estructura_horas,

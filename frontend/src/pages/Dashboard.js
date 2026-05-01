@@ -81,9 +81,11 @@ const Dashboard = () => {
             <h1 className="text-xl font-semibold text-slate-900">
               {scheduleData?.nombre_archivo || 'Horario'}
             </h1>
-            <p className="text-xs text-slate-500">
-              Confianza: {((scheduleData?.nivel_confianza_global || 0) * 100).toFixed(1)}%
-            </p>
+            <div className="flex items-center gap-3 text-xs text-slate-500">
+              <span>{scheduleData?.programa_nombre || 'Programa'}</span>
+              <span>•</span>
+              <span>Confianza: {((scheduleData?.nivel_confianza_global || 0) * 100).toFixed(1)}%</span>
+            </div>
           </div>
         </div>
         <Button onClick={handleExport} data-testid="export-json-btn">

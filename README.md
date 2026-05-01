@@ -4,6 +4,13 @@ Sistema completo para extracción, visualización, corrección y exportación de
 
 ## Características Principales
 
+### Múltiples Programas Académicos
+- **Soporte para 4 carreras**: Ingeniería de Sistemas (66 materias), Medicina (18), Administración de Empresas (14), Derecho (15)
+- **Selector de programa**: Elige el programa antes de subir el archivo
+- **Diccionarios específicos**: Cada programa tiene su propio diccionario de materias
+- **Fuzzy matching contextual**: Búsqueda de materias según el programa seleccionado
+- **Extensible**: Agregar nuevos programas es tan simple como añadir un archivo JSON
+
 ### Procesamiento Automático
 - **Lectura de Excel**: Procesa archivos XLSX con formato calendario (días como columnas, horas como filas)
 - **Extracción inteligente**: Identifica materias, grupos, docentes y aulas usando expresiones regulares y parsing semántico
@@ -75,8 +82,11 @@ Sistema completo para extracción, visualización, corrección y exportación de
 
 ## API Endpoints
 
+### Programas Académicos
+- `GET /api/programs` - Listar programas disponibles
+
 ### Procesamiento
-- `POST /api/upload` - Subir y procesar archivo XLSX
+- `POST /api/upload?program_id={id}` - Subir y procesar archivo XLSX con programa específico
 - `GET /api/schedules` - Listar todos los horarios
 - `GET /api/schedule/{id}` - Obtener horario específico
 
@@ -88,8 +98,8 @@ Sistema completo para extracción, visualización, corrección y exportación de
 - `POST /api/schedule/{id}/export` - Exportar a formato JSON
 
 ### Diccionario
-- `GET /api/subjects` - Obtener todas las materias
-- `GET /api/subjects/search/{query}` - Buscar con fuzzy matching
+- `GET /api/subjects?program_id={id}` - Obtener materias de un programa
+- `GET /api/subjects/search/{query}?program_id={id}` - Buscar con fuzzy matching
 
 ## Métricas de Confianza
 
@@ -98,6 +108,37 @@ El sistema calcula niveles de confianza para cada bloque:
 - **70-89%**: Estado inferido (amarillo)
 - **< 70%**: Estado desconocido (gris)
 - **Sin grupo detectado**: Reduce confianza en 20%
+
+## Diccionarios Académicos
+
+El sistema incluye 4 programas académicos con sus respectivos planes de estudio:
+
+### Ingeniería de Sistemas (66 materias)
+- Matemáticas y ciencias básicas
+- Programación y desarrollo de software
+- Redes y telecomunicaciones
+- Bases de datos y sistemas
+- Inteligencia artificial y machine learning
+
+### Medicina (18 materias)
+- Ciencias básicas médicas (Anatomía, Fisiología, Bioquímica)
+- Ciencias clínicas (Medicina Interna, Cirugía, Pediatría)
+- Especialidades (Ginecología, Psiquiatría, Radiología)
+- Salud pública y medicina legal
+
+### Administración de Empresas (14 materias)
+- Fundamentos administrativos y contables
+- Gestión del talento humano
+- Finanzas y mercadeo
+- Estrategia y operaciones
+- Emprendimiento e innovación
+
+### Derecho (15 materias)
+- Derecho constitucional y civil
+- Derecho penal y procesal
+- Derecho laboral y comercial
+- Derecho administrativo e internacional
+- Ética y clínica jurídica
 
 ## Diccionario Académico
 
@@ -110,6 +151,24 @@ El fuzzy matching permite identificar materias incluso con:
 - Errores de tipeo
 - Abreviaturas
 - Variaciones en el nombre
+
+### Agregar Nuevos Programas
+
+Para agregar un nuevo programa académico:
+
+1. Crear archivo JSON en `/app/backend/diccionarios/{programa_id}.json`
+2. Estructura del diccionario:
+```json
+{
+  "materia_id": {
+    "nombre_oficial": "Nombre de la Materia",
+    "codigo": "CODIGO",
+    "creditos": 3
+  }
+}
+```
+3. Reiniciar el backend - el programa se cargará automáticamente
+4. El nuevo programa aparecerá en el selector de la página de upload
 
 ## Formato de Exportación
 

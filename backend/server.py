@@ -13,7 +13,7 @@ import tempfile
 from datetime import datetime
 
 from models import (
-    ProcessedSchedule, UploadResponse, BlockUpdate, Subject
+    ProcessedSchedule, UploadResponse, BlockUpdate, Subject, ProgramaAcademico
 )
 from utils.schedule_processor import ScheduleProcessor
 from utils.export_helper import export_to_json_format
@@ -28,34 +28,84 @@ db = client[os.environ['DB_NAME']]
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
-DICCIONARIO_PATH = ROOT_DIR / "diccionario_ingenieria_de_sistemas.json"
-subject_dict = {}
+DICCIONARIOS_DIR = ROOT_DIR / "diccionarios"
+programas_dict = {}
+processors = {}
 
-if DICCIONARIO_PATH.exists():
-    with open(DICCIONARIO_PATH, 'r', encoding='utf-8') as f:
-        subject_dict = json.load(f)
+def load_academic_programs():
+    """Carga todos los programas académicos disponibles"""
+    global programas_dict, processors
+    
+    if not DICCIONARIOS_DIR.exists():
+        logging.warning(f"Directorio de diccionarios no encontrado: {DICCIONARIOS_DIR}")
+        return
+    
+    programa_names = {
+        "ingenieria_de_sistemas": "Ingeniería de Sistemas",
+        "derecho": "Derecho",
+        "medicina": "Medicina",
+        "administracion_empresas": "Administración de Empresas"
+    }
+    
+    for dict_file in DICCIONARIOS_DIR.glob("*.json"):
+        programa_id = dict_file.stem
+        
+        try:
+            with open(dict_file, 'r', encoding='utf-8') as f:
+                subject_dict = json.load(f)
+            
+            programas_dict[programa_id] = {
+                "id": programa_id,
+                "nombre": programa_names.get(programa_id, programa_id.replace("_", " ").title()),
+                "diccionario": subject_dict,
+                "total_materias": len(subject_dict)
+            }
+            
+            processors[programa_id] = ScheduleProcessor(subject_dict)
+            
+            logging.info(f"Programa cargado: {programa_id} con {len(subject_dict)} materias")
+        
+        except Exception as e:
+            logging.error(f"Error cargando programa {programa_id}: {str(e)}")
 
-processor = ScheduleProcessor(subject_dict)
+load_academic_programs()
 
-from utils.subject_matcher import SubjectMatcher
-subject_matcher = SubjectMatcher(subject_dict)
+if not programas_dict:
+    logging.warning("No se cargaron programas académicos")
 
 @api_router.get("/")
 async def root():
-    return {"message": "Academic Schedule Processor API"}
+    return {"message": "Academic Schedule Processor API", "programs": len(programas_dict)}
+
+@api_router.get("/programs", response_model=List[ProgramaAcademico])
+async def get_programs():
+    """Obtiene la lista de programas académicos disponibles"""
+    programs = []
+    for prog_id, prog_data in programas_dict.items():
+        programs.append(ProgramaAcademico(
+            id=prog_id,
+            nombre=prog_data["nombre"],
+            total_materias=prog_data["total_materias"]
+        ))
+    return programs
 
 @api_router.post("/upload", response_model=UploadResponse)
-async def upload_schedule(file: UploadFile = File(...)):
+async def upload_schedule(file: UploadFile = File(...), program_id: str = "ingenieria_de_sistemas"):
     """Sube y procesa un archivo XLSX"""
     if not file.filename.endswith(('.xlsx', '.xls')):
         raise HTTPException(status_code=400, detail="Solo se permiten archivos Excel (.xlsx, .xls)")
+    
+    if program_id not in programas_dict:
+        raise HTTPException(status_code=400, detail=f"Programa '{program_id}' no encontrado")
     
     with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
         shutil.copyfileobj(file.file, tmp_file)
         tmp_path = tmp_file.name
     
     try:
-        schedule = processor.process_file(tmp_path, file.filename)
+        processor = processors[program_id]
+        programa_nombre = programas_dict[program_id]["nombre"]
+        schedule = processor.process_file(tmp_path, file.filename, program_id, programa_nombre)
         
         schedule_dict = schedule.model_dump()
         schedule_dict['fecha_procesamiento'] = schedule_dict['fecha_procesamiento'].isoformat()
@@ -176,13 +226,20 @@ async def export_schedule(schedule_id: str):
     if not schedule:
         raise HTTPException(status_code=404, detail="Horario no encontrado")
     
+    program_id = schedule.get("programa_id", "ingenieria_de_sistemas")
+    subject_dict = programas_dict.get(program_id, {}).get("diccionario", {})
+    
     exported = export_to_json_format(schedule, subject_dict)
     
     return JSONResponse(content=exported)
 
 @api_router.get("/subjects", response_model=List[Subject])
-async def get_subjects():
-    """Obtiene el diccionario de materias"""
+async def get_subjects(program_id: str = "ingenieria_de_sistemas"):
+    """Obtiene el diccionario de materias de un programa específico"""
+    if program_id not in programas_dict:
+        raise HTTPException(status_code=400, detail=f"Programa '{program_id}' no encontrado")
+    
+    subject_dict = programas_dict[program_id]["diccionario"]
     subjects = []
     for subject_id, data in subject_dict.items():
         subjects.append(Subject(
@@ -194,9 +251,15 @@ async def get_subjects():
     return subjects
 
 @api_router.get("/subjects/search/{query}")
-async def search_subjects(query: str, limit: int = 10):
-    """Busca materias por texto con fuzzy matching"""
-    suggestions = subject_matcher.get_suggestions(query, limit=limit)
+async def search_subjects(query: str, program_id: str = "ingenieria_de_sistemas", limit: int = 10):
+    """Busca materias por texto con fuzzy matching en un programa específico"""
+    if program_id not in programas_dict:
+        raise HTTPException(status_code=400, detail=f"Programa '{program_id}' no encontrado")
+    
+    from utils.subject_matcher import SubjectMatcher
+    subject_dict = programas_dict[program_id]["diccionario"]
+    matcher = SubjectMatcher(subject_dict)
+    suggestions = matcher.get_suggestions(query, limit=limit)
     
     results = []
     for subject_id, name, confidence in suggestions:

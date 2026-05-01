@@ -79,7 +79,7 @@ def export_to_json_format(schedule: dict, diccionario: dict) -> dict:
     
     return {
         "metadata": {
-            "programa": schedule.get("programa") or "Programa Académico",
+            "programa": schedule.get("programa_nombre") or schedule.get("programa") or "Programa Académico",
             "archivo": schedule["nombre_archivo"],
             "fechaProcesamiento": schedule["fecha_procesamiento"],
             "totalAsignaturas": total_asignaturas,
