@@ -3,6 +3,7 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { useSchedule } from '../context/ScheduleContext';
+import { useHistory } from '../context/HistoryContext';
 import BlockEditor from './BlockEditor';
 import { toast } from 'sonner';
 import '@/App.css';
@@ -13,6 +14,7 @@ const API = `${BACKEND_URL}/api`;
 const ScheduleGrid = () => {
   const { scheduleId } = useParams();
   const { scheduleData, setScheduleData, selectedCell, setSelectedCell } = useSchedule();
+  const { pushAction } = useHistory();
   const [editingBlock, setEditingBlock] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -70,6 +72,8 @@ const ScheduleGrid = () => {
 
     if (!block) return;
 
+    const previousSchedule = JSON.parse(JSON.stringify(scheduleData));
+
     try {
       const destHoraData = estructura_horas.find((h) => h.inicio === destHora);
 
@@ -106,9 +110,26 @@ const ScheduleGrid = () => {
       updatedDestCell.bloques.push(block);
 
       setScheduleData(updatedSchedule);
+
+      pushAction({
+        type: 'MOVE_BLOCK',
+        data: {
+          blockId,
+          from: { dia: sourceDia, hora: sourceHora },
+          to: { dia: destDia, hora: destHora },
+        },
+        onUndo: () => {
+          setScheduleData(previousSchedule);
+        },
+        onRedo: () => {
+          setScheduleData(updatedSchedule);
+        },
+      });
+
       toast.success('Bloque movido exitosamente');
     } catch (error) {
       console.error('Error moving block:', error);
+      setScheduleData(previousSchedule);
       toast.error('Error al mover el bloque');
     }
   };

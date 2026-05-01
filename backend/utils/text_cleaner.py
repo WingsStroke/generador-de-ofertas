@@ -51,4 +51,34 @@ class TextCleaner:
             
             return [c for c in classes if c]
         
+        multiple_groups_pattern = re.compile(r'([A-Z]\d+)\s*[,yY&]\s*([A-Z]\d+)')
+        if multiple_groups_pattern.search(text):
+            grupos_encontrados = re.findall(r'[A-Z]\d+', text)
+            if len(grupos_encontrados) > 1:
+                base_text = multiple_groups_pattern.sub('', text).strip()
+                if base_text:
+                    classes = []
+                    for grupo in grupos_encontrados:
+                        class_text = f"{base_text} ({grupo})"
+                        classes.append(class_text)
+                    return classes
+        
         return [text]
+    
+    @staticmethod
+    def extract_multiple_groups(text: str) -> List[str]:
+        """Extrae múltiples grupos de un texto como 'A1, A2' o 'A1 y A2'"""
+        group_patterns = [
+            re.compile(r'([A-Z]\d+)\s*,\s*([A-Z]\d+)'),
+            re.compile(r'([A-Z]\d+)\s+y\s+([A-Z]\d+)'),
+            re.compile(r'([A-Z]\d+)\s*&\s*([A-Z]\d+)'),
+            re.compile(r'([A-Z]\d+)\s*/\s*([A-Z]\d+)')
+        ]
+        
+        for pattern in group_patterns:
+            if pattern.search(text):
+                grupos = re.findall(r'[A-Z]\d+', text)
+                if len(grupos) > 1:
+                    return grupos
+        
+        return []

@@ -46,6 +46,17 @@ class ExcelCell(BaseModel):
     colspan: int = 1
     is_merged: bool = False
 
+class SheetData(BaseModel):
+    """Datos de una hoja específica"""
+    model_config = ConfigDict(extra="ignore")
+    
+    nombre: str
+    celdas: List[ScheduleCell] = []
+    estructura_dias: List[str] = []
+    estructura_horas: List[Dict[str, str]] = []
+    excel_preview: List[ExcelCell] = []
+    nivel_confianza: float = 0.0
+
 class ProcessedSchedule(BaseModel):
     """Horario completo procesado"""
     model_config = ConfigDict(extra="ignore")
@@ -57,6 +68,7 @@ class ProcessedSchedule(BaseModel):
     programa_nombre: str
     semestre: Optional[str] = None
     hojas: List[str] = []
+    hojas_data: Dict[str, Any] = {}
     hoja_actual: str = ""
     celdas: List[ScheduleCell] = []
     estructura_dias: List[str] = []

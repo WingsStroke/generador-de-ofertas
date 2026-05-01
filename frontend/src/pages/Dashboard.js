@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
-import { Download, ArrowLeft, FileText } from 'lucide-react';
+import { Download, ArrowLeft, FileText, Undo2, Redo2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
+import { Badge } from '../components/ui/badge';
 import { toast } from 'sonner';
 import { useSchedule } from '../context/ScheduleContext';
+import { useHistory } from '../context/HistoryContext';
 import ScheduleGrid from '../components/ScheduleGrid';
 import ExcelPreview from '../components/ExcelPreview';
 
@@ -15,7 +17,9 @@ const API = `${BACKEND_URL}/api`;
 const Dashboard = () => {
   const { scheduleId } = useParams();
   const { scheduleData, setScheduleData, setSubjects } = useSchedule();
+  const { canUndo, canRedo, hasUnsavedChanges, undo, redo } = useHistory();
   const [loading, setLoading] = useState(true);
+  const [currentSheet, setCurrentSheet] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -26,6 +30,7 @@ const Dashboard = () => {
         ]);
 
         setScheduleData(scheduleRes.data);
+        setCurrentSheet(scheduleRes.data.hoja_actual || (scheduleRes.data.hojas && scheduleRes.data.hojas[0]));
         setSubjects(subjectsRes.data);
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -37,6 +42,24 @@ const Dashboard = () => {
 
     fetchData();
   }, [scheduleId, setScheduleData, setSubjects]);
+
+  const loadSheetData = (sheetName) => {
+    if (!scheduleData || !scheduleData.hojas_data) return;
+    
+    const sheetData = scheduleData.hojas_data[sheetName];
+    if (sheetData) {
+      const updatedSchedule = {
+        ...scheduleData,
+        hoja_actual: sheetName,
+        celdas: sheetData.celdas || [],
+        estructura_dias: sheetData.estructura_dias || [],
+        estructura_horas: sheetData.estructura_horas || [],
+        excel_preview: sheetData.excel_preview || [],
+      };
+      setScheduleData(updatedSchedule);
+      setCurrentSheet(sheetName);
+    }
+  };
 
   const handleExport = async () => {
     try {
@@ -79,9 +102,16 @@ const Dashboard = () => {
             Volver
           </Button>
           <div>
-            <h1 className="text-xl font-semibold text-slate-900">
-              {scheduleData?.nombre_archivo || 'Horario'}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-semibold text-slate-900">
+                {scheduleData?.nombre_archivo || 'Horario'}
+              </h1>
+              {hasUnsavedChanges && (
+                <Badge variant="outline" className="text-amber-600 border-amber-600">
+                  Sin guardar
+                </Badge>
+              )}
+            </div>
             <div className="flex items-center gap-3 text-xs text-slate-500">
               <span>{scheduleData?.programa_nombre || 'Programa'}</span>
               <span>•</span>
@@ -89,15 +119,37 @@ const Dashboard = () => {
             </div>
           </div>
         </div>
-        <Button onClick={handleExport} data-testid="export-json-btn">
-          <Download className="w-4 h-4 mr-2" />
-          Exportar JSON
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => undo()}
+            disabled={!canUndo}
+            title="Deshacer (Ctrl+Z)"
+            data-testid="undo-btn"
+          >
+            <Undo2 className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => redo()}
+            disabled={!canRedo}
+            title="Rehacer (Ctrl+Shift+Z)"
+            data-testid="redo-btn"
+          >
+            <Redo2 className="w-4 h-4" />
+          </Button>
+          <Button onClick={handleExport} data-testid="export-json-btn">
+            <Download className="w-4 h-4 mr-2" />
+            Exportar JSON
+          </Button>
+        </div>
       </header>
 
       <div className="flex-1 flex overflow-hidden bg-slate-50">
         {scheduleData && scheduleData.hojas && scheduleData.hojas.length > 1 ? (
-          <Tabs defaultValue={scheduleData.hoja_actual || scheduleData.hojas[0]} className="w-full flex flex-col">
+          <Tabs value={currentSheet} onValueChange={loadSheetData} className="w-full flex flex-col">
             <div className="border-b border-slate-200 px-4 bg-white">
               <TabsList className="h-12">
                 {scheduleData.hojas.map((hoja) => (
@@ -114,27 +166,25 @@ const Dashboard = () => {
               </TabsList>
             </div>
 
-            {scheduleData.hojas.map((hoja) => (
-              <TabsContent key={hoja} value={hoja} className="flex-1 flex overflow-hidden m-0">
-                <div className="flex-1 flex flex-col min-w-0 h-full border-r border-slate-200 bg-white">
-                  <div className="h-12 border-b border-slate-200 px-4 flex items-center justify-between bg-slate-50/50">
-                    <h2 className="text-sm font-semibold text-slate-700">Horario Editable - {hoja}</h2>
-                  </div>
-                  <div className="flex-1 overflow-auto p-4">
-                    <ScheduleGrid />
-                  </div>
+            <div className="flex-1 flex overflow-hidden">
+              <div className="flex-1 flex flex-col min-w-0 h-full border-r border-slate-200 bg-white">
+                <div className="h-12 border-b border-slate-200 px-4 flex items-center justify-between bg-slate-50/50">
+                  <h2 className="text-sm font-semibold text-slate-700">Horario Editable - {currentSheet}</h2>
                 </div>
+                <div className="flex-1 overflow-auto p-4">
+                  <ScheduleGrid key={currentSheet} />
+                </div>
+              </div>
 
-                <div className="flex-1 flex flex-col min-w-0 h-full bg-white">
-                  <div className="h-12 border-b border-slate-200 px-4 flex items-center justify-between bg-slate-50/50">
-                    <h2 className="text-sm font-semibold text-slate-700">Vista Original - {hoja}</h2>
-                  </div>
-                  <div className="flex-1 overflow-auto p-4">
-                    <ExcelPreview />
-                  </div>
+              <div className="flex-1 flex flex-col min-w-0 h-full bg-white">
+                <div className="h-12 border-b border-slate-200 px-4 flex items-center justify-between bg-slate-50/50">
+                  <h2 className="text-sm font-semibold text-slate-700">Vista Original - {currentSheet}</h2>
                 </div>
-              </TabsContent>
-            ))}
+                <div className="flex-1 overflow-auto p-4">
+                  <ExcelPreview key={currentSheet} />
+                </div>
+              </div>
+            </div>
           </Tabs>
         ) : (
           <>

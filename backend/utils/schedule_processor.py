@@ -1,5 +1,6 @@
 import os
 import uuid
+import re
 from datetime import datetime, timezone
 from typing import Dict, List
 from utils.excel_reader import ExcelReader
@@ -18,43 +19,100 @@ class ScheduleProcessor:
         self.subject_dict = subject_dict
         self.matcher = SubjectMatcher(subject_dict)
     
-    def process_file(self, file_path: str, filename: str, programa_id: str = None, programa_nombre: str = None, sheet_name: str = None) -> ProcessedSchedule:
+    def process_file(self, file_path: str, filename: str, programa_id: str = None, programa_nombre: str = None, process_all_sheets: bool = True) -> ProcessedSchedule:
         """Procesa un archivo Excel completo"""
         reader = ExcelReader(file_path)
         
         try:
             all_sheets = reader.get_all_sheets()
             
-            if sheet_name and sheet_name in all_sheets:
-                reader.set_sheet(sheet_name)
-                current_sheet = sheet_name
-            else:
+            if not process_all_sheets:
                 current_sheet = all_sheets[0] if all_sheets else "Sheet1"
-            
-            schedule_cells = reader.extract_schedule_cells()
-            preview_grid = reader.get_preview_grid()
-            
-            start_row, start_col, dias, horas = reader.detect_schedule_structure()
-            
-            processed_cells = []
-            total_confidence = 0.0
-            total_blocks = 0
-            
-            for cell_data in schedule_cells:
-                processed_cell = self._process_cell(cell_data)
-                processed_cells.append(processed_cell)
+                reader.set_sheet(current_sheet)
                 
-                for block in processed_cell.bloques:
-                    total_confidence += block.nivel_confianza
-                    total_blocks += 1
+                schedule_cells = reader.extract_schedule_cells()
+                preview_grid = reader.get_preview_grid()
+                start_row, start_col, dias, horas = reader.detect_schedule_structure()
+                
+                processed_cells = []
+                total_confidence = 0.0
+                total_blocks = 0
+                
+                for cell_data in schedule_cells:
+                    processed_cell = self._process_cell(cell_data)
+                    processed_cells.append(processed_cell)
+                    
+                    for block in processed_cell.bloques:
+                        total_confidence += block.nivel_confianza
+                        total_blocks += 1
+                
+                global_confidence = total_confidence / total_blocks if total_blocks > 0 else 0.0
+                
+                estructura_horas = [{"inicio": h[0], "fin": h[1]} for h in horas]
+                preview_cells = [ExcelCell(**cell) for cell in preview_grid]
+                
+                schedule = ProcessedSchedule(
+                    id=str(uuid.uuid4()),
+                    nombre_archivo=filename,
+                    fecha_procesamiento=datetime.now(timezone.utc),
+                    programa_id=programa_id or "unknown",
+                    programa_nombre=programa_nombre or "Programa Desconocido",
+                    hojas=all_sheets,
+                    hojas_data={},
+                    hoja_actual=current_sheet,
+                    celdas=processed_cells,
+                    estructura_dias=dias,
+                    estructura_horas=estructura_horas,
+                    excel_preview=preview_cells,
+                    nivel_confianza_global=global_confidence
+                )
+                
+                return schedule
             
-            global_confidence = total_confidence / total_blocks if total_blocks > 0 else 0.0
+            hojas_data = {}
+            total_confidence_all = 0.0
+            total_blocks_all = 0
             
-            estructura_horas = [
-                {"inicio": h[0], "fin": h[1]} for h in horas
-            ]
+            for sheet_name in all_sheets:
+                reader.set_sheet(sheet_name)
+                
+                schedule_cells = reader.extract_schedule_cells()
+                preview_grid = reader.get_preview_grid()
+                start_row, start_col, dias, horas = reader.detect_schedule_structure()
+                
+                processed_cells = []
+                total_confidence = 0.0
+                total_blocks = 0
+                
+                for cell_data in schedule_cells:
+                    processed_cell = self._process_cell(cell_data)
+                    processed_cells.append(processed_cell)
+                    
+                    for block in processed_cell.bloques:
+                        total_confidence += block.nivel_confianza
+                        total_blocks += 1
+                
+                sheet_confidence = total_confidence / total_blocks if total_blocks > 0 else 0.0
+                
+                total_confidence_all += total_confidence
+                total_blocks_all += total_blocks
+                
+                estructura_horas = [{"inicio": h[0], "fin": h[1]} for h in horas]
+                preview_cells = [ExcelCell(**cell) for cell in preview_grid]
+                
+                hojas_data[sheet_name] = {
+                    "nombre": sheet_name,
+                    "celdas": [c.model_dump() for c in processed_cells],
+                    "estructura_dias": dias,
+                    "estructura_horas": estructura_horas,
+                    "excel_preview": [e.model_dump() for e in preview_cells],
+                    "nivel_confianza": sheet_confidence
+                }
             
-            preview_cells = [ExcelCell(**cell) for cell in preview_grid]
+            global_confidence = total_confidence_all / total_blocks_all if total_blocks_all > 0 else 0.0
+            
+            first_sheet = all_sheets[0] if all_sheets else "Sheet1"
+            first_sheet_data = hojas_data.get(first_sheet, {})
             
             schedule = ProcessedSchedule(
                 id=str(uuid.uuid4()),
@@ -63,11 +121,12 @@ class ScheduleProcessor:
                 programa_id=programa_id or "unknown",
                 programa_nombre=programa_nombre or "Programa Desconocido",
                 hojas=all_sheets,
-                hoja_actual=current_sheet,
-                celdas=processed_cells,
-                estructura_dias=dias,
-                estructura_horas=estructura_horas,
-                excel_preview=preview_cells,
+                hojas_data=hojas_data,
+                hoja_actual=first_sheet,
+                celdas=[ScheduleCell(**c) for c in first_sheet_data.get("celdas", [])],
+                estructura_dias=first_sheet_data.get("estructura_dias", []),
+                estructura_horas=first_sheet_data.get("estructura_horas", []),
+                excel_preview=[ExcelCell(**e) for e in first_sheet_data.get("excel_preview", [])],
                 nivel_confianza_global=global_confidence
             )
             
@@ -83,8 +142,16 @@ class ScheduleProcessor:
         
         bloques = []
         for class_text in classes:
-            block = self._parse_class_block(class_text, cell_data["celda_ref"])
-            bloques.append(block)
+            multiple_groups = TextCleaner.extract_multiple_groups(class_text)
+            
+            if multiple_groups:
+                for grupo in multiple_groups:
+                    modified_text = re.sub(r'[A-Z]\d+[\s,y&/]*', f'{grupo} ', class_text, count=1)
+                    block = self._parse_class_block(modified_text, cell_data["celda_ref"], grupo)
+                    bloques.append(block)
+            else:
+                block = self._parse_class_block(class_text, cell_data["celda_ref"])
+                bloques.append(block)
         
         return ScheduleCell(
             dia=cell_data["dia"],
@@ -94,9 +161,11 @@ class ScheduleProcessor:
             celda_ref=cell_data["celda_ref"]
         )
     
-    def _parse_class_block(self, text: str, celda_ref: str) -> ScheduleBlock:
+    def _parse_class_block(self, text: str, celda_ref: str, forced_grupo: str = None) -> ScheduleBlock:
         """Parsea un bloque de clase individual"""
         entities = SemanticParser.extract_entities(text)
+        
+        grupo = forced_grupo or entities["grupo"]
         
         materia_text = entities["materia"]
         subject_id, subject_name, confidence = self.matcher.match_subject(materia_text)
@@ -111,7 +180,7 @@ class ScheduleProcessor:
         else:
             estado = BlockStatus.UNKNOWN
         
-        if not entities["grupo"]:
+        if not grupo:
             confidence *= 0.8
             if estado == BlockStatus.CONFIRMED:
                 estado = BlockStatus.INFERRED
@@ -120,7 +189,7 @@ class ScheduleProcessor:
             id=str(uuid.uuid4()),
             materia=subject_name if subject_name else materia_text,
             materia_id=subject_id,
-            grupo=entities["grupo"],
+            grupo=grupo,
             docente=entities["docente"],
             aula=entities["aula"],
             nivel_confianza=confidence,
