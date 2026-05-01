@@ -7,9 +7,10 @@ from utils.excel_reader import ExcelReader
 from utils.text_cleaner import TextCleaner
 from utils.semantic_parser import SemanticParser
 from utils.subject_matcher import SubjectMatcher
+from utils.time_utils import calcular_bloques_horarios
 from models import (
     ScheduleBlock, ScheduleCell, ProcessedSchedule, 
-    ExcelCell, BlockStatus
+    ExcelCell, BlockStatus, TimeSlot
 )
 
 class ScheduleProcessor:
@@ -148,9 +149,21 @@ class ScheduleProcessor:
                 for grupo in multiple_groups:
                     modified_text = re.sub(r'[A-Z]\d+[\s,y&/]*', f'{grupo} ', class_text, count=1)
                     block = self._parse_class_block(modified_text, cell_data["celda_ref"], grupo)
+                    self._add_time_slot_to_block(
+                        block, 
+                        cell_data["dia"], 
+                        cell_data["hora_inicio"], 
+                        cell_data["hora_fin"]
+                    )
                     bloques.append(block)
             else:
                 block = self._parse_class_block(class_text, cell_data["celda_ref"])
+                self._add_time_slot_to_block(
+                    block, 
+                    cell_data["dia"], 
+                    cell_data["hora_inicio"], 
+                    cell_data["hora_fin"]
+                )
                 bloques.append(block)
         
         return ScheduleCell(
@@ -195,7 +208,21 @@ class ScheduleProcessor:
             nivel_confianza=confidence,
             estado=estado,
             celda_origen=celda_ref,
-            texto_original=entities["texto_limpio"]
+            texto_original=entities["texto_limpio"],
+            horarios=[]
         )
         
         return block
+    
+    def _add_time_slot_to_block(self, block: ScheduleBlock, dia: str, hora_inicio: str, hora_fin: str):
+        """Agrega un horario a un bloque y calcula los bloques de 50min"""
+        bloques_cantidad, minutos = calcular_bloques_horarios(hora_inicio, hora_fin)
+        
+        time_slot = TimeSlot(
+            dia=dia,
+            hora_inicio=hora_inicio,
+            hora_fin=hora_fin,
+            bloques_cantidad=bloques_cantidad
+        )
+        
+        block.horarios.append(time_slot)

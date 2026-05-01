@@ -9,6 +9,15 @@ class BlockStatus(str, Enum):
     ERROR = "error"
     UNKNOWN = "unknown"
 
+class TimeSlot(BaseModel):
+    """Representa un horario específico (día y rango de horas)"""
+    model_config = ConfigDict(extra="ignore")
+    
+    dia: str
+    hora_inicio: str
+    hora_fin: str
+    bloques_cantidad: int = 0
+
 class ScheduleBlock(BaseModel):
     """Representa un bloque individual de clase dentro de una celda"""
     model_config = ConfigDict(extra="ignore")
@@ -23,6 +32,7 @@ class ScheduleBlock(BaseModel):
     estado: BlockStatus = BlockStatus.UNKNOWN
     celda_origen: Optional[str] = None
     texto_original: Optional[str] = None
+    horarios: List[TimeSlot] = []
 
 class ScheduleCell(BaseModel):
     """Representa una celda del horario con múltiples bloques"""

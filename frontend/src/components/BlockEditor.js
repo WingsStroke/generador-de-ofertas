@@ -9,13 +9,15 @@ import {
   DialogDescription,
   DialogFooter,
 } from './ui/dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { toast } from 'sonner';
 import { useSchedule } from '../context/ScheduleContext';
-import { Search, Trash2 } from 'lucide-react';
+import { Search, Trash2, Plus, Clock, Calendar } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -30,9 +32,11 @@ const BlockEditor = ({ block, onClose }) => {
     docente: block.docente || '',
     aula: block.aula || '',
   });
+  const [horarios, setHorarios] = useState(block.horarios || []);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [activeTab, setActiveTab] = useState('info');
 
   useEffect(() => {
     const searchSubjects = async () => {
@@ -93,6 +97,13 @@ const BlockEditor = ({ block, onClose }) => {
         formData
       );
 
+      if (horarios.length > 0) {
+        await axios.put(
+          `${API}/schedule/${scheduleId}/block/${block.id}/horarios`,
+          horarios
+        );
+      }
+
       const updatedSchedule = { ...scheduleData };
       const cell = updatedSchedule.celdas.find(
         (c) => c.dia === cellData.dia && c.hora_inicio === cellData.hora_inicio
@@ -102,6 +113,7 @@ const BlockEditor = ({ block, onClose }) => {
         cell.bloques[blockIndex] = {
           ...cell.bloques[blockIndex],
           ...formData,
+          horarios,
           estado: 'confirmed',
           nivel_confianza: 1.0,
         };
@@ -113,6 +125,46 @@ const BlockEditor = ({ block, onClose }) => {
     } catch (error) {
       console.error('Error updating block:', error);
       toast.error('Error al actualizar el bloque');
+    }
+  };
+
+  const handleAddHorario = () => {
+    setHorarios([
+      ...horarios,
+      {
+        dia: 'L',
+        hora_inicio: '08:00',
+        hora_fin: '08:50',
+        bloques_cantidad: 1,
+      },
+    ]);
+  };
+
+  const handleRemoveHorario = (index) => {
+    setHorarios(horarios.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateHorario = (index, field, value) => {
+    const newHorarios = [...horarios];
+    newHorarios[index][field] = value;
+    
+    if (field === 'hora_inicio' || field === 'hora_fin') {
+      const inicio = field === 'hora_inicio' ? value : newHorarios[index].hora_inicio;
+      const fin = field === 'hora_fin' ? value : newHorarios[index].hora_fin;
+      newHorarios[index].bloques_cantidad = calcularBloques(inicio, fin);
+    }
+    
+    setHorarios(newHorarios);
+  };
+
+  const calcularBloques = (inicio, fin) => {
+    try {
+      const [hI, mI] = inicio.split(':').map(Number);
+      const [hF, mF] = fin.split(':').map(Number);
+      const minutos = (hF * 60 + mF) - (hI * 60 + mI);
+      return Math.floor(minutos / 50);
+    } catch {
+      return 0;
     }
   };
 

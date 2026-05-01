@@ -233,6 +233,62 @@ async def export_schedule(schedule_id: str):
     
     return JSONResponse(content=exported)
 
+@api_router.put("/schedule/{schedule_id}/block/{block_id}/horarios")
+async def update_block_horarios(
+    schedule_id: str,
+    block_id: str,
+    horarios: List[Dict]
+):
+    """Actualiza los horarios de un bloque específico"""
+    from utils.time_utils import calcular_bloques_horarios, validar_solapamiento
+    
+    schedule = await db.schedules.find_one({"id": schedule_id}, {"_id": 0})
+    
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Horario no encontrado")
+    
+    block_found = None
+    parent_cell = None
+    
+    for cell in schedule["celdas"]:
+        for block in cell["bloques"]:
+            if block["id"] == block_id:
+                block_found = block
+                parent_cell = cell
+                break
+        if block_found:
+            break
+    
+    if not block_found:
+        raise HTTPException(status_code=404, detail="Bloque no encontrado")
+    
+    horarios_procesados = []
+    for horario in horarios:
+        bloques_cant, minutos = calcular_bloques_horarios(
+            horario["hora_inicio"], 
+            horario["hora_fin"]
+        )
+        
+        horarios_procesados.append({
+            "dia": horario["dia"],
+            "hora_inicio": horario["hora_inicio"],
+            "hora_fin": horario["hora_fin"],
+            "bloques_cantidad": bloques_cant
+        })
+    
+    block_found["horarios"] = horarios_procesados
+    
+    await db.schedules.update_one(
+        {"id": schedule_id},
+        {"$set": {"celdas": schedule["celdas"]}}
+    )
+    
+    return {
+        "message": "Horarios actualizados exitosamente",
+        "block_id": block_id,
+        "horarios": horarios_procesados
+    }
+
 @api_router.get("/schedule/{schedule_id}/search")
 async def search_in_schedule(
     schedule_id: str,
