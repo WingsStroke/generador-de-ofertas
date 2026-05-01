@@ -1,0 +1,36 @@
+{
+  "summary": "First iteration testing complete for academic schedule processor. Backend: 13/13 pytest tests PASSED (upload, processing, CRUD on blocks, export, subjects dictionary, fuzzy search). Frontend: full E2E flow verified - upload page loads, file upload + processing succeeds, navigation to dashboard, ScheduleGrid renders 65 cells / 40 blocks, ExcelPreview renders 350 cells, BlockEditor opens, autocomplete fuzzy matching returns 10 suggestions, block update persists with confirmed (green) status and toast 'Bloque actualizado exitosamente'. Confianza global ~79.8% on real test file.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Dashboard handleExport", "issue": "Anchor element used for download is not appended to document.body before .click(); may not trigger downloads reliably in all browsers (Playwright did not capture a download event). Real Chrome usually works but recommend appending/removing the anchor or using FileSaver pattern for reliability.", "selector": "[data-testid=\"export-json-btn\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "BlockEditor Dialog", "issues": ["Console warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent} (a11y warning from Radix Dialog)"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "(LOW) Make export download more robust: append anchor to document.body, click, then remove. This avoids edge cases where the click is not honored.",
+    "(LOW) Add DialogDescription or aria-describedby to BlockEditor DialogContent to silence Radix a11y warning."
+  ],
+  "critical_code_review_comments": [
+    "server.py: subject_matcher is instantiated per request inside /api/subjects/search/{query}. Move to module-level singleton like ScheduleProcessor for performance.",
+    "server.py PUT/DELETE block endpoints fetch entire schedule and rewrite the full 'celdas' array. For large schedules this is fine but consider $arrayFilters-based atomic updates.",
+    "server.py: file extension check uses endswith on filename - could be bypassed; consider also validating MIME / openpyxl load.",
+    "Dashboard.js handleExport: DOM anchor not appended, may fail to download in some browsers.",
+    "BlockEditor DialogContent missing aria description (a11y).",
+    "No backend pagination on GET /api/schedules (uses to_list(1000)) - acceptable for now but document the limit."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100%", "frontend": "95%"},
+  "test_credentials": "N/A - public access, no auth required",
+  "seed_data_creation": "Created test schedule via upload of /tmp/test_schedule.xlsx (sistemas-2026-1.xlsx). One test schedule_id: d5002a3f-b13f-491b-b255-81c98f05dc87. Pytest creates additional schedules per run; cleanup not implemented (no DELETE endpoint for schedule).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Test xlsx is at /tmp/test_schedule.xlsx (download from https://customer-assets.emergentagent.com/job_timetable-validator/artifacts/zebg1ay9_sistemas-2026-1.xlsx). Run: pytest /app/backend/tests/backend_test.py -v. Frontend flow: Upload page -> click upload -> /dashboard/{id} -> click block to open BlockEditor -> autocomplete on materia field works -> save updates block. Excel preview (right panel) and Schedule grid (left panel) both render correctly. Confianza ~80%."
+}

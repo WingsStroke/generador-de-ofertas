@@ -1,0 +1,332 @@
+{
+    "calculo_diferencial": {
+        "nombre_oficial": "Cálculo Diferencial",
+        "codigo": "CFBD002",
+        "creditos": 3
+    },
+    "fundamentos_de_matematica": {
+        "nombre_oficial": "Fundamentos de Matemática",
+        "codigo": "CFBD001",
+        "creditos": 2
+    },
+    "calculo_integral": {
+        "nombre_oficial": "Cálculo Integral",
+        "codigo": "CFBD221",
+        "creditos": 3
+    },
+    "algebra_lineal": {
+        "nombre_oficial": "Álgebra Lineal",
+        "codigo": "CFBD222",
+        "creditos": 3
+    },
+    "fisica_mecanica_y_laboratorio": {
+        "nombre_oficial": "Física Mecanica y Laboratorio",
+        "codigo": "CFBD223",
+        "creditos": 4
+    },
+    "calculo_vectorial": {
+        "nombre_oficial": "Cálculo Vectorial",
+        "codigo": "CFBD224",
+        "creditos": 3
+    },
+    "matematicas_discretas": {
+        "nombre_oficial": "Matemáticas Discretas",
+        "codigo": "CFBD225",
+        "creditos": 3
+    },
+    "electromagnetismo_y_laboratorio": {
+        "nombre_oficial": "Electromagnetismo y Laboratorio",
+        "codigo": "CFBD226",
+        "creditos": 3
+    },
+    "probabilidad_y_estadistica": {
+        "nombre_oficial": "Probabilidad y Estadistica",
+        "codigo": "CFBD227",
+        "creditos": 2
+    },
+    "ecuaciones_diferenciales": {
+        "nombre_oficial": "Ecuaciones Diferenciales",
+        "codigo": "CFBD228",
+        "creditos": 3
+    },
+    "fisica_de_ondas_y_calor_y_laboratorio": {
+        "nombre_oficial": "Física de Ondas y Calor y Laboratorio",
+        "codigo": "CFBD229",
+        "creditos": 3
+    },
+    "metodologia_de_la_investigacion": {
+        "nombre_oficial": "Metodologia de la Investigacion",
+        "codigo": "CFBD239",
+        "creditos": 2
+    },
+    "fundamentos_de_ecologia_y_medio_ambiente": {
+        "nombre_oficial": "Fundamentos de Ecologia y Medio Ambiente",
+        "codigo": "CFP2231",
+        "creditos": 2
+    },
+    "produccion_y_comprension_textual_i": {
+        "nombre_oficial": "Producción y Comprensión Textual I",
+        "codigo": "FN23001",
+        "creditos": 2
+    },
+    "catedra_institucional": {
+        "nombre_oficial": "Cátedra Institucional",
+        "codigo": "FN23002",
+        "creditos": 2
+    },
+    "ingles_i": {
+        "nombre_oficial": "Ingles I",
+        "codigo": "FN23003",
+        "creditos": 2
+    },
+    "produccion_y_comprension_textual_ii": {
+        "nombre_oficial": "Producción y Comprensión Textual II",
+        "codigo": "FN23004",
+        "creditos": 2
+    },
+    "ingles_ii": {
+        "nombre_oficial": "Ingles II",
+        "codigo": "FN23005",
+        "creditos": 2
+    },
+    "ingles_iii": {
+        "nombre_oficial": "Ingles III",
+        "codigo": "FN23006",
+        "creditos": 2
+    },
+    "ingles_iv": {
+        "nombre_oficial": "Ingles IV",
+        "codigo": "FN23007",
+        "creditos": 2
+    },
+    "ingles_v": {
+        "nombre_oficial": "Ingles V",
+        "codigo": "FN23008",
+        "creditos": 2
+    },
+    "ingles_vi": {
+        "nombre_oficial": "Ingles VI",
+        "codigo": "FN23009",
+        "creditos": 2
+    },
+    "etica_y_legislacion_informatica": {
+        "nombre_oficial": "Ética y Legislación Informática",
+        "codigo": "CFBN221",
+        "creditos": 2
+    },
+    "introduccion_a_la_ingenieria_de_sistemas": {
+        "nombre_oficial": "Introducción a la Ingenieria de Sistemas",
+        "codigo": "CFP2201",
+        "creditos": 2
+    },
+    "algoritmos_y_programacion": {
+        "nombre_oficial": "Algoritmos y Programacion",
+        "codigo": "CFP2202",
+        "creditos": 3
+    },
+    "programacion_basica": {
+        "nombre_oficial": "Programación Basica",
+        "codigo": "CFP2203",
+        "creditos": 3
+    },
+    "programacion_orientada_a_objetos": {
+        "nombre_oficial": "Programación Orientada a Objetos",
+        "codigo": "CFP2204",
+        "creditos": 3
+    },
+    "teoria_general_de_sistemas": {
+        "nombre_oficial": "Teoria General de Sistemas",
+        "codigo": "CFP2205",
+        "creditos": 3
+    },
+    "electronica": {
+        "nombre_oficial": "Electrónica",
+        "codigo": "CFP2206",
+        "creditos": 3
+    },
+    "bases_de_datos": {
+        "nombre_oficial": "Bases de Datos",
+        "codigo": "CFP2207",
+        "creditos": 3
+    },
+    "estructura_de_datos": {
+        "nombre_oficial": "Estructura de Datos",
+        "codigo": "CFP2208",
+        "creditos": 3
+    },
+    "administracion": {
+        "nombre_oficial": "Administracion",
+        "codigo": "CFP2209",
+        "creditos": 2
+    },
+    "sistemas_dinamicos": {
+        "nombre_oficial": "Sistemas Dinámicos",
+        "codigo": "CFP2210",
+        "creditos": 3
+    },
+    "sistemas_digitales": {
+        "nombre_oficial": "Sistemas Digitales",
+        "codigo": "CFP2211",
+        "creditos": 3
+    },
+    "ingenieria_de_servicios_de_internet": {
+        "nombre_oficial": "Ingeniería de Servicios de Internet",
+        "codigo": "CFP2212",
+        "creditos": 3
+    },
+    "investigacion_de_operaciones": {
+        "nombre_oficial": "Investigacion de Operaciones",
+        "codigo": "CFP2213",
+        "creditos": 2
+    },
+    "contabilidad_y_costos": {
+        "nombre_oficial": "Contabilidad y Costos",
+        "codigo": "CFP2214",
+        "creditos": 2
+    },
+    "sistemas_operativos": {
+        "nombre_oficial": "Sistemas Operativos",
+        "codigo": "CFP2215",
+        "creditos": 3
+    },
+    "organizacion_de_computadores": {
+        "nombre_oficial": "Organización de Computadores",
+        "codigo": "CFP2216",
+        "creditos": 3
+    },
+    "comunicacion_de_datos": {
+        "nombre_oficial": "Comunicación de Datos",
+        "codigo": "CFP2217",
+        "creditos": 3
+    },
+    "teoria_automatas_y_lenguajes_formales": {
+        "nombre_oficial": "Teoria Automatas y Lenguajes Formales",
+        "codigo": "CFP2218",
+        "creditos": 3
+    },
+    "ingenieria_de_software": {
+        "nombre_oficial": "Ingeniería de Software",
+        "codigo": "CFP2219",
+        "creditos": 3
+    },
+    "comercio_electronico": {
+        "nombre_oficial": "Comercio Electronico",
+        "codigo": "CFP2220",
+        "creditos": 3
+    },
+    "ingenieria_economica": {
+        "nombre_oficial": "Ingenieria Economica",
+        "codigo": "CFP2221",
+        "creditos": 2
+    },
+    "seguridad_informatica": {
+        "nombre_oficial": "Seguridad Informatica",
+        "codigo": "CFP2222",
+        "creditos": 2
+    },
+    "inteligencia_artificial": {
+        "nombre_oficial": "Inteligencia Artificial",
+        "codigo": "CFP2223",
+        "creditos": 3
+    },
+    "gestion_de_proyectos_informaticos": {
+        "nombre_oficial": "Gestion de Proyectos Informaticos",
+        "codigo": "CFP2224",
+        "creditos": 3
+    },
+    "electiva_i": {
+        "nombre_oficial": "Electiva I",
+        "codigo": "EL22001",
+        "creditos": 3
+    },
+    "profundizacion_i": {
+        "nombre_oficial": "Profundizacion I",
+        "codigo": "CFP2225",
+        "creditos": 3
+    },
+    "auditoria_de_sistemas": {
+        "nombre_oficial": "Auditoria de Sistemas",
+        "codigo": "CFP2226",
+        "creditos": 2
+    },
+    "trabajo_de_grado_i": {
+        "nombre_oficial": "Trabajo de Grado I",
+        "codigo": null,
+        "creditos": 2
+    },
+    "simulacion_digital": {
+        "nombre_oficial": "Simulacion Digital",
+        "codigo": null,
+        "creditos": 3
+    },
+    "seminario_taller_creacion_de_empresas": {
+        "nombre_oficial": "Seminario Taller Creacion de Empresas",
+        "codigo": null,
+        "creditos": 2
+    },
+    "electiva_ii": {
+        "nombre_oficial": "Electiva II",
+        "codigo": null,
+        "creditos": 3
+    },
+    "profundizacion_ii": {
+        "nombre_oficial": "Profundizacion II",
+        "codigo": null,
+        "creditos": 3
+    },
+    "trabajo_de_grado_ii": {
+        "nombre_oficial": "Trabajo de Grado II",
+        "codigo": null,
+        "creditos": 4
+    },
+    "sistemas_de_informacion_gerencial": {
+        "nombre_oficial": "Sistemas de Informacion Gerencial",
+        "codigo": null,
+        "creditos": 3
+    },
+    "diseno_de_soluciones_stem": {
+        "nombre_oficial": "Diseño de Soluciones Stem",
+        "codigo": null,
+        "creditos": 3
+    },
+    "electiva_iii": {
+        "nombre_oficial": "Electiva III",
+        "codigo": null,
+        "creditos": 3
+    },
+    "profundizacion_iii": {
+        "nombre_oficial": "Profundizacion III",
+        "codigo": null,
+        "creditos": 3
+    },
+    "practica_empresarial": {
+        "nombre_oficial": "Practica Empresarial",
+        "codigo": null,
+        "creditos": 6
+    },
+    "electiva_iv": {
+        "nombre_oficial": "Electiva IV",
+        "codigo": null,
+        "creditos": 3
+    },
+    "formacion_humana_i": {
+        "nombre_oficial": "Formación Humana I",
+        "codigo": null,
+        "creditos": 2
+    },
+    "formacion_humana_ii": {
+        "nombre_oficial": "Formación Humana II",
+        "codigo": null,
+        "creditos": 2
+    },
+    "formacion_humana_iii": {
+        "nombre_oficial": "Formación Humana III",
+        "codigo": null,
+        "creditos": 2
+    },
+    "formacion_humana_iv": {
+        "nombre_oficial": "Formación Humana IV",
+        "codigo": null,
+        "creditos": 2
+    }
+}
