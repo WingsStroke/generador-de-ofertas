@@ -97,12 +97,10 @@ const BlockEditor = ({ block, onClose }) => {
         formData
       );
 
-      if (horarios.length > 0) {
-        await axios.put(
-          `${API}/schedule/${scheduleId}/block/${block.id}/horarios`,
-          horarios
-        );
-      }
+      await axios.put(
+        `${API}/schedule/${scheduleId}/block/${block.id}/horarios`,
+        horarios
+      );
 
       const updatedSchedule = { ...scheduleData };
       const cell = updatedSchedule.celdas.find(
