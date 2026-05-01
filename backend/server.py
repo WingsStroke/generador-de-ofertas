@@ -233,6 +233,99 @@ async def export_schedule(schedule_id: str):
     
     return JSONResponse(content=exported)
 
+@api_router.get("/schedule/{schedule_id}/search")
+async def search_in_schedule(
+    schedule_id: str,
+    q: str,
+    type: str = "all",
+    limit: int = 50
+):
+    """Busca materia/docente/aula en todas las hojas del horario"""
+    from rapidfuzz import fuzz
+    
+    schedule = await db.schedules.find_one({"id": schedule_id}, {"_id": 0})
+    
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Horario no encontrado")
+    
+    if not q or len(q) < 2:
+        return {"results": [], "total": 0, "query": q}
+    
+    results = []
+    query_lower = q.lower()
+    
+    hojas_data = schedule.get("hojas_data", {})
+    
+    if not hojas_data:
+        celdas = schedule.get("celdas", [])
+        hojas_data = {schedule.get("hoja_actual", "Hoja 1"): {"celdas": celdas}}
+    
+    for hoja_nombre, hoja_info in hojas_data.items():
+        for celda in hoja_info.get("celdas", []):
+            for bloque in celda.get("bloques", []):
+                score = 0
+                matched_field = None
+                matched_value = None
+                
+                if type in ["all", "materia"]:
+                    materia = bloque.get("materia", "")
+                    if materia:
+                        materia_score = fuzz.partial_ratio(query_lower, materia.lower())
+                        if materia_score > score:
+                            score = materia_score
+                            matched_field = "materia"
+                            matched_value = materia
+                
+                if type in ["all", "docente"]:
+                    docente = bloque.get("docente", "")
+                    if docente:
+                        docente_score = fuzz.partial_ratio(query_lower, docente.lower())
+                        if docente_score > score:
+                            score = docente_score
+                            matched_field = "docente"
+                            matched_value = docente
+                
+                if type in ["all", "aula"]:
+                    aula = bloque.get("aula", "")
+                    if aula:
+                        aula_score = fuzz.partial_ratio(query_lower, aula.lower())
+                        if aula_score > score:
+                            score = aula_score
+                            matched_field = "aula"
+                            matched_value = aula
+                
+                if score >= 60:
+                    results.append({
+                        "hoja": hoja_nombre,
+                        "dia": celda["dia"],
+                        "hora_inicio": celda["hora_inicio"],
+                        "hora_fin": celda["hora_fin"],
+                        "bloque": {
+                            "id": bloque["id"],
+                            "materia": bloque.get("materia"),
+                            "grupo": bloque.get("grupo"),
+                            "docente": bloque.get("docente"),
+                            "aula": bloque.get("aula"),
+                            "estado": bloque.get("estado")
+                        },
+                        "matched_field": matched_field,
+                        "matched_value": matched_value,
+                        "score": score
+                    })
+    
+    results.sort(key=lambda x: x["score"], reverse=True)
+    results = results[:limit]
+    
+    hojas_con_resultados = len(set(r["hoja"] for r in results))
+    
+    return {
+        "results": results,
+        "total": len(results),
+        "hojas_con_resultados": hojas_con_resultados,
+        "query": q,
+        "type": type
+    }
+
 @api_router.post("/schedule/{schedule_id}/move-block")
 async def move_block(schedule_id: str, move: BlockMove):
     """Mueve un bloque a una nueva celda (drag & drop)"""

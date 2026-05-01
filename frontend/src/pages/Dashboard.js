@@ -10,6 +10,7 @@ import { useSchedule } from '../context/ScheduleContext';
 import { useHistory } from '../context/HistoryContext';
 import ScheduleGrid from '../components/ScheduleGrid';
 import ExcelPreview from '../components/ExcelPreview';
+import GlobalSearch from '../components/GlobalSearch';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -59,6 +60,20 @@ const Dashboard = () => {
       setScheduleData(updatedSchedule);
       setCurrentSheet(sheetName);
     }
+  };
+
+  const handleNavigateFromSearch = (hoja, dia, hora_inicio) => {
+    loadSheetData(hoja);
+    setTimeout(() => {
+      const cell = document.querySelector(`[data-testid="schedule-cell-${dia}-${hora_inicio}"]`);
+      if (cell) {
+        cell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        cell.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
+        setTimeout(() => {
+          cell.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2');
+        }, 2000);
+      }
+    }, 300);
   };
 
   const handleExport = async () => {
@@ -120,6 +135,7 @@ const Dashboard = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <GlobalSearch onNavigate={handleNavigateFromSearch} />
           <Button
             variant="outline"
             size="sm"
