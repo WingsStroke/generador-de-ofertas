@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
-import { Download, ArrowLeft } from 'lucide-react';
+import { Download, ArrowLeft, FileText } from 'lucide-react';
 import { Button } from '../components/ui/button';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { toast } from 'sonner';
 import { useSchedule } from '../context/ScheduleContext';
 import ScheduleGrid from '../components/ScheduleGrid';
@@ -95,23 +96,67 @@ const Dashboard = () => {
       </header>
 
       <div className="flex-1 flex overflow-hidden bg-slate-50">
-        <div className="flex-1 flex flex-col min-w-0 h-full border-r border-slate-200 bg-white">
-          <div className="h-12 border-b border-slate-200 px-4 flex items-center justify-between bg-slate-50/50">
-            <h2 className="text-sm font-semibold text-slate-700">Horario Editable</h2>
-          </div>
-          <div className="flex-1 overflow-auto p-4">
-            <ScheduleGrid />
-          </div>
-        </div>
+        {scheduleData && scheduleData.hojas && scheduleData.hojas.length > 1 ? (
+          <Tabs defaultValue={scheduleData.hoja_actual || scheduleData.hojas[0]} className="w-full flex flex-col">
+            <div className="border-b border-slate-200 px-4 bg-white">
+              <TabsList className="h-12">
+                {scheduleData.hojas.map((hoja) => (
+                  <TabsTrigger
+                    key={hoja}
+                    value={hoja}
+                    className="gap-2"
+                    data-testid={`tab-${hoja}`}
+                  >
+                    <FileText className="w-4 h-4" />
+                    {hoja}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
 
-        <div className="flex-1 flex flex-col min-w-0 h-full bg-white">
-          <div className="h-12 border-b border-slate-200 px-4 flex items-center justify-between bg-slate-50/50">
-            <h2 className="text-sm font-semibold text-slate-700">Vista Original</h2>
-          </div>
-          <div className="flex-1 overflow-auto p-4">
-            <ExcelPreview />
-          </div>
-        </div>
+            {scheduleData.hojas.map((hoja) => (
+              <TabsContent key={hoja} value={hoja} className="flex-1 flex overflow-hidden m-0">
+                <div className="flex-1 flex flex-col min-w-0 h-full border-r border-slate-200 bg-white">
+                  <div className="h-12 border-b border-slate-200 px-4 flex items-center justify-between bg-slate-50/50">
+                    <h2 className="text-sm font-semibold text-slate-700">Horario Editable - {hoja}</h2>
+                  </div>
+                  <div className="flex-1 overflow-auto p-4">
+                    <ScheduleGrid />
+                  </div>
+                </div>
+
+                <div className="flex-1 flex flex-col min-w-0 h-full bg-white">
+                  <div className="h-12 border-b border-slate-200 px-4 flex items-center justify-between bg-slate-50/50">
+                    <h2 className="text-sm font-semibold text-slate-700">Vista Original - {hoja}</h2>
+                  </div>
+                  <div className="flex-1 overflow-auto p-4">
+                    <ExcelPreview />
+                  </div>
+                </div>
+              </TabsContent>
+            ))}
+          </Tabs>
+        ) : (
+          <>
+            <div className="flex-1 flex flex-col min-w-0 h-full border-r border-slate-200 bg-white">
+              <div className="h-12 border-b border-slate-200 px-4 flex items-center justify-between bg-slate-50/50">
+                <h2 className="text-sm font-semibold text-slate-700">Horario Editable</h2>
+              </div>
+              <div className="flex-1 overflow-auto p-4">
+                <ScheduleGrid />
+              </div>
+            </div>
+
+            <div className="flex-1 flex flex-col min-w-0 h-full bg-white">
+              <div className="h-12 border-b border-slate-200 px-4 flex items-center justify-between bg-slate-50/50">
+                <h2 className="text-sm font-semibold text-slate-700">Vista Original</h2>
+              </div>
+              <div className="flex-1 overflow-auto p-4">
+                <ExcelPreview />
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

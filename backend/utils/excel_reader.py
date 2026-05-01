@@ -8,7 +8,19 @@ class ExcelReader:
     
     def __init__(self, file_path: str):
         self.workbook = openpyxl.load_workbook(file_path, data_only=True)
-        self.sheet = self.workbook.active
+        self.sheets = self.workbook.sheetnames
+        self.current_sheet = self.workbook.active
+        
+    def set_sheet(self, sheet_name: str):
+        """Cambia la hoja activa"""
+        if sheet_name in self.sheets:
+            self.current_sheet = self.workbook[sheet_name]
+            return True
+        return False
+    
+    def get_all_sheets(self) -> List[str]:
+        """Obtiene nombres de todas las hojas"""
+        return self.sheets
         
     def detect_schedule_structure(self) -> Tuple[int, int, List[str], List[Tuple[str, str]]]:
         """Detecta la estructura del horario: fila inicio, columna inicio, días, horas"""
@@ -18,7 +30,7 @@ class ExcelReader:
         start_col = None
         dias_encontrados = []
         
-        for row_idx, row in enumerate(self.sheet.iter_rows(max_row=20), 1):
+        for row_idx, row in enumerate(self.current_sheet.iter_rows(max_row=20), 1):
             for col_idx, cell in enumerate(row, 1):
                 if cell.value and isinstance(cell.value, str):
                     cell_upper = cell.value.strip().upper()
@@ -33,7 +45,7 @@ class ExcelReader:
             start_row = 1
             start_col = 1
         
-        for cell in self.sheet[start_row]:
+        for cell in self.current_sheet[start_row]:
             if cell.value and isinstance(cell.value, str):
                 val_upper = cell.value.strip().upper()
                 for dia in ["LUNES", "MARTES", "MIÉRCOLES", "MIERCOLES", "JUEVES", "VIERNES", "SÁBADO", "SABADO"]:
@@ -68,7 +80,7 @@ class ExcelReader:
         time_pattern = re.compile(r'(\d{1,2})[:\s]*(\d{2})')
         horas = []
         
-        for row in self.sheet.iter_rows(min_row=start_row, max_row=start_row + 50):
+        for row in self.current_sheet.iter_rows(min_row=start_row, max_row=start_row + 50):
             cell_value = row[0].value
             if cell_value and isinstance(cell_value, str):
                 matches = time_pattern.findall(cell_value)
@@ -86,13 +98,13 @@ class ExcelReader:
     
     def get_cell_content(self, row: int, col: int) -> Optional[str]:
         """Obtiene el contenido de una celda"""
-        cell = self.sheet.cell(row=row, column=col)
+        cell = self.current_sheet.cell(row=row, column=col)
         return str(cell.value).strip() if cell.value else None
     
     def get_merged_cells(self) -> List[Dict]:
         """Obtiene información de celdas fusionadas"""
         merged_cells = []
-        for merged_range in self.sheet.merged_cells.ranges:
+        for merged_range in self.current_sheet.merged_cells.ranges:
             min_col, min_row, max_col, max_row = merged_range.bounds
             merged_cells.append({
                 "ref": str(merged_range),
@@ -142,9 +154,9 @@ class ExcelReader:
         preview_cells = []
         merged_info = {str(m["ref"]): m for m in self.get_merged_cells()}
         
-        for row_idx in range(1, min(max_rows + 1, self.sheet.max_row + 1)):
-            for col_idx in range(1, min(max_cols + 1, self.sheet.max_column + 1)):
-                cell = self.sheet.cell(row=row_idx, column=col_idx)
+        for row_idx in range(1, min(max_rows + 1, self.current_sheet.max_row + 1)):
+            for col_idx in range(1, min(max_cols + 1, self.current_sheet.max_column + 1)):
+                cell = self.current_sheet.cell(row=row_idx, column=col_idx)
                 cell_ref = f"{get_column_letter(col_idx)}{row_idx}"
                 
                 is_merged = False

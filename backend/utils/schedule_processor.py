@@ -18,11 +18,19 @@ class ScheduleProcessor:
         self.subject_dict = subject_dict
         self.matcher = SubjectMatcher(subject_dict)
     
-    def process_file(self, file_path: str, filename: str, programa_id: str = None, programa_nombre: str = None) -> ProcessedSchedule:
+    def process_file(self, file_path: str, filename: str, programa_id: str = None, programa_nombre: str = None, sheet_name: str = None) -> ProcessedSchedule:
         """Procesa un archivo Excel completo"""
         reader = ExcelReader(file_path)
         
         try:
+            all_sheets = reader.get_all_sheets()
+            
+            if sheet_name and sheet_name in all_sheets:
+                reader.set_sheet(sheet_name)
+                current_sheet = sheet_name
+            else:
+                current_sheet = all_sheets[0] if all_sheets else "Sheet1"
+            
             schedule_cells = reader.extract_schedule_cells()
             preview_grid = reader.get_preview_grid()
             
@@ -54,6 +62,8 @@ class ScheduleProcessor:
                 fecha_procesamiento=datetime.now(timezone.utc),
                 programa_id=programa_id or "unknown",
                 programa_nombre=programa_nombre or "Programa Desconocido",
+                hojas=all_sheets,
+                hoja_actual=current_sheet,
                 celdas=processed_cells,
                 estructura_dias=dias,
                 estructura_horas=estructura_horas,

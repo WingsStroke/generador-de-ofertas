@@ -13,7 +13,7 @@ import tempfile
 from datetime import datetime
 
 from models import (
-    ProcessedSchedule, UploadResponse, BlockUpdate, Subject, ProgramaAcademico
+    ProcessedSchedule, UploadResponse, BlockUpdate, BlockMove, Subject, ProgramaAcademico
 )
 from utils.schedule_processor import ScheduleProcessor
 from utils.export_helper import export_to_json_format
@@ -232,6 +232,57 @@ async def export_schedule(schedule_id: str):
     exported = export_to_json_format(schedule, subject_dict)
     
     return JSONResponse(content=exported)
+
+@api_router.post("/schedule/{schedule_id}/move-block")
+async def move_block(schedule_id: str, move: BlockMove):
+    """Mueve un bloque a una nueva celda (drag & drop)"""
+    schedule = await db.schedules.find_one({"id": schedule_id}, {"_id": 0})
+    
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Horario no encontrado")
+    
+    block_found = None
+    from_cell = None
+    
+    for cell in schedule["celdas"]:
+        if cell["dia"] == move.from_dia and cell["hora_inicio"] == move.from_hora_inicio:
+            from_cell = cell
+            for block in cell["bloques"]:
+                if block["id"] == move.block_id:
+                    block_found = block
+                    break
+            if block_found:
+                break
+    
+    if not block_found:
+        raise HTTPException(status_code=404, detail="Bloque no encontrado")
+    
+    from_cell["bloques"] = [b for b in from_cell["bloques"] if b["id"] != move.block_id]
+    
+    to_cell = None
+    for cell in schedule["celdas"]:
+        if cell["dia"] == move.to_dia and cell["hora_inicio"] == move.to_hora_inicio:
+            to_cell = cell
+            break
+    
+    if not to_cell:
+        to_cell = {
+            "dia": move.to_dia,
+            "hora_inicio": move.to_hora_inicio,
+            "hora_fin": move.to_hora_fin,
+            "bloques": [],
+            "celda_ref": None
+        }
+        schedule["celdas"].append(to_cell)
+    
+    to_cell["bloques"].append(block_found)
+    
+    await db.schedules.update_one(
+        {"id": schedule_id},
+        {"$set": {"celdas": schedule["celdas"]}}
+    )
+    
+    return {"message": "Bloque movido exitosamente", "block_id": move.block_id}
 
 @api_router.get("/subjects", response_model=List[Subject])
 async def get_subjects(program_id: str = "ingenieria_de_sistemas"):

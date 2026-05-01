@@ -51,9 +51,14 @@
   margin-bottom: 0.25rem;
   font-size: 0.75rem;
   border-left: 2px solid;
-  cursor: pointer;
+  cursor: grab;
   transition: all 150ms ease-in-out;
   background: white;
+  user-select: none;
+}
+
+.block-item:active {
+  cursor: grabbing;
 }
 
 .block-item:last-child {

@@ -56,6 +56,8 @@ class ProcessedSchedule(BaseModel):
     programa_id: str
     programa_nombre: str
     semestre: Optional[str] = None
+    hojas: List[str] = []
+    hoja_actual: str = ""
     celdas: List[ScheduleCell] = []
     estructura_dias: List[str] = []
     estructura_horas: List[Dict[str, str]] = []
@@ -83,6 +85,15 @@ class BlockUpdate(BaseModel):
     grupo: Optional[str] = None
     docente: Optional[str] = None
     aula: Optional[str] = None
+
+class BlockMove(BaseModel):
+    """Movimiento de un bloque a una nueva celda"""
+    block_id: str
+    from_dia: str
+    from_hora_inicio: str
+    to_dia: str
+    to_hora_inicio: str
+    to_hora_fin: str
 
 class Subject(BaseModel):
     """Materia del diccionario académico"""
