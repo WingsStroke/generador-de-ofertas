@@ -4,7 +4,8 @@ import pytest
 import requests
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://timetable-validator.preview.emergentagent.com').rstrip('/')
-TEST_FILE = '/tmp/test_schedule.xlsx'
+# Support both older and newer test file locations
+TEST_FILE = '/tmp/test.xlsx' if os.path.exists('/tmp/test.xlsx') else '/tmp/test_schedule.xlsx'
 
 
 @pytest.fixture(scope="module")
@@ -154,3 +155,133 @@ def test_delete_block(api, schedule_id):
 def test_delete_block_not_found(api, schedule_id):
     r = api.delete(f"{BASE_URL}/api/schedule/{schedule_id}/cell/Lunes/07:00/block/nonexistent", timeout=15)
     assert r.status_code == 404
+
+
+# ============================================================
+# Horarios (intervalos de 50 minutos) - new feature
+# ============================================================
+
+def _get_any_block(api, schedule_id):
+    r = api.get(f"{BASE_URL}/api/schedule/{schedule_id}", timeout=15)
+    s = r.json()
+    for cell in s["celdas"]:
+        if cell.get("bloques"):
+            return cell["dia"], cell["hora_inicio"], cell["bloques"][0]["id"]
+    return None
+
+
+def test_update_block_horarios_persistence(api, schedule_id):
+    target = _get_any_block(api, schedule_id)
+    assert target is not None
+    _, _, block_id = target
+
+    horarios = [
+        {"dia": "L", "hora_inicio": "08:40", "hora_fin": "10:20"},  # 100 min -> 2 bloques
+        {"dia": "M", "hora_inicio": "08:00", "hora_fin": "08:50"},  # 50 min -> 1 bloque
+    ]
+    r = api.put(f"{BASE_URL}/api/schedule/{schedule_id}/block/{block_id}/horarios",
+                json=horarios, timeout=15)
+    assert r.status_code == 200, f"{r.status_code} {r.text}"
+    data = r.json()
+    assert data["block_id"] == block_id
+    assert len(data["horarios"]) == 2
+    assert data["horarios"][0]["bloques_cantidad"] == 2
+    assert data["horarios"][1]["bloques_cantidad"] == 1
+
+    # Verify persistence via GET
+    r2 = api.get(f"{BASE_URL}/api/schedule/{schedule_id}", timeout=15)
+    sched = r2.json()
+    found_block = None
+    for cell in sched["celdas"]:
+        for b in cell["bloques"]:
+            if b["id"] == block_id:
+                found_block = b
+                break
+    assert found_block is not None
+    assert "horarios" in found_block
+    assert len(found_block["horarios"]) == 2
+    assert found_block["horarios"][0]["dia"] == "L"
+    assert found_block["horarios"][0]["bloques_cantidad"] == 2
+    assert found_block["horarios"][1]["dia"] == "M"
+    assert found_block["horarios"][1]["bloques_cantidad"] == 1
+
+
+def test_update_block_horarios_empty_array(api, schedule_id):
+    target = _get_any_block(api, schedule_id)
+    assert target is not None
+    _, _, block_id = target
+    r = api.put(f"{BASE_URL}/api/schedule/{schedule_id}/block/{block_id}/horarios",
+                json=[], timeout=15)
+    assert r.status_code == 200
+    assert r.json()["horarios"] == []
+
+
+def test_update_block_horarios_not_found(api, schedule_id):
+    r = api.put(f"{BASE_URL}/api/schedule/{schedule_id}/block/nonexistent/horarios",
+                json=[], timeout=15)
+    assert r.status_code == 404
+
+
+# ============================================================
+# Search (fuzzy, all sheets)
+# ============================================================
+
+def test_search_in_schedule(api, schedule_id):
+    r = api.get(f"{BASE_URL}/api/schedule/{schedule_id}/search", params={"q": "calculo"}, timeout=15)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert "results" in data and "total" in data
+    assert isinstance(data["results"], list)
+    assert data["query"] == "calculo"
+
+
+def test_search_too_short_query(api, schedule_id):
+    r = api.get(f"{BASE_URL}/api/schedule/{schedule_id}/search", params={"q": "a"}, timeout=15)
+    assert r.status_code == 200
+    assert r.json()["total"] == 0
+
+
+# ============================================================
+# Move block (drag & drop)
+# ============================================================
+
+def test_move_block(api, schedule_id):
+    # Find a block with a source cell
+    r = api.get(f"{BASE_URL}/api/schedule/{schedule_id}", timeout=15)
+    s = r.json()
+    src = None
+    dst_cell = None
+    for cell in s["celdas"]:
+        if cell.get("bloques") and src is None:
+            src = (cell["dia"], cell["hora_inicio"], cell["hora_fin"], cell["bloques"][0]["id"])
+        elif not cell.get("bloques") and dst_cell is None:
+            dst_cell = (cell["dia"], cell["hora_inicio"], cell["hora_fin"])
+        if src and dst_cell:
+            break
+    assert src is not None
+    # fallback destination if no empty cell
+    if dst_cell is None:
+        dst_cell = ("Viernes", "18:00", "19:00")
+
+    payload = {
+        "block_id": src[3],
+        "from_dia": src[0],
+        "from_hora_inicio": src[1],
+        "to_dia": dst_cell[0],
+        "to_hora_inicio": dst_cell[1],
+        "to_hora_fin": dst_cell[2],
+    }
+    r = api.post(f"{BASE_URL}/api/schedule/{schedule_id}/move-block", json=payload, timeout=15)
+    assert r.status_code == 200, f"{r.status_code} {r.text}"
+    assert r.json()["block_id"] == src[3]
+
+    # Verify block now exists in destination
+    r2 = api.get(f"{BASE_URL}/api/schedule/{schedule_id}", timeout=15)
+    s2 = r2.json()
+    moved = False
+    for cell in s2["celdas"]:
+        if cell["dia"] == dst_cell[0] and cell["hora_inicio"] == dst_cell[1]:
+            if any(b["id"] == src[3] for b in cell["bloques"]):
+                moved = True
+                break
+    assert moved, "Block was not moved to destination cell"

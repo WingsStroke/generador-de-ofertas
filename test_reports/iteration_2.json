@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 2: validated new Horarios tab feature in BlockEditor (manual edit of 50-min intervals) plus regression on upload, CRUD, search, move-block. Backend: 19/19 pytest tests PASSED (added 6 new: update_block_horarios_persistence, update_block_horarios_empty_array, update_block_horarios_not_found, search_in_schedule, search_too_short_query, move_block). Frontend E2E (Playwright): BlockEditor opens with 2 tabs (tab-info, tab-horarios), 'Agregar' creates a new 50-min intervalo, filling 08:40-10:20 correctly updates badge to '2 × 50min', day Select (Radix) can be changed to Martes, remove-horario-{index} deletes the intervalo, Guardar persists horarios to backend (PUT /api/schedule/{id}/block/{id}/horarios); reopening the dialog shows the persisted 3 intervals. Toast 'Bloque actualizado exitosamente' displayed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "BlockEditor Horarios tab", "issues": ["Time inputs show in AM/PM format (locale-dependent browser default) — values are stored correctly in 24h but user-facing display may confuse. Consider step=60 or a 24h formatted time component."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "(LOW) Consider adding server-side overlap validation in PUT /api/schedule/{id}/block/{id}/horarios using existing validar_solapamiento helper — currently any array is accepted without conflict check.",
+    "(LOW) PUT horarios endpoint does not validate 'dia' values against allowed set (L/M/X/J/V/S/D) — invalid days are silently persisted.",
+    "(LOW, carried from iter-1) Make export download anchor append-to-body pattern; add DialogDescription/aria-describedby (already added in iter-2 code via DialogDescription)."
+  ],
+  "critical_code_review_comments": [
+    "utils/time_utils.py:calcular_bloques_horarios uses bare 'except' — prefer explicit ValueError to avoid hiding bugs.",
+    "server.py horarios endpoint accepts raw List[Dict] instead of Pydantic TimeSlot list — no input validation. Recommend typing as List[TimeSlot].",
+    "BlockEditor.js handleSave sends horarios in a second PUT only if horarios.length > 0 — users who clear all intervals cannot persist an empty array via UI (backend supports it). Always send the array.",
+    "BlockEditor.js horario key uses array index — reordering/removing could cause React reconciliation issues; prefer a stable id per intervalo.",
+    "server.py: move-block does not preserve 'horarios' array assumption — should be fine since block_found keeps full dict, but worth an integration test.",
+    "No DELETE endpoint for an entire schedule — test schedules accumulate in MongoDB across test runs."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "100% (all assertions passed)"},
+  "test_credentials": "N/A - public app, no auth",
+  "seed_data_creation": "Reused existing schedule 6195f991-6f7f-49a6-ab44-2526d30936d7. Pytest fixture uploads a fresh schedule per module run from /tmp/test.xlsx.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Test file at /tmp/test.xlsx (fallback /tmp/test_schedule.xlsx supported in backend_test.py). Horarios tab feature works end-to-end. Data-testids available: tab-info, tab-horarios, horarios-tab-content, horarios-count-badge, add-horario-btn, horario-item-{index}, horario-dia-{index}, horario-inicio-{index}, horario-fin-{index}, remove-horario-{index}, edit-block-dialog, save-block-btn, delete-block-btn. Backend horarios PUT endpoint at /api/schedule/{id}/block/{block_id}/horarios (array body)."
+}
