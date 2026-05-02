@@ -141,6 +141,29 @@ async def get_schedule(schedule_id: str):
     
     return schedule
 
+def _iter_celdas_collections(schedule: Dict) -> List[List[Dict]]:
+    """Devuelve todas las listas de celdas de un schedule (top-level + cada hoja)."""
+    collections = []
+    if schedule.get("celdas"):
+        collections.append(schedule["celdas"])
+    hojas_data = schedule.get("hojas_data") or {}
+    for hoja_info in hojas_data.values():
+        if isinstance(hoja_info, dict) and hoja_info.get("celdas"):
+            collections.append(hoja_info["celdas"])
+    return collections
+
+def _find_block_locations(schedule: Dict, block_id: str):
+    """Busca TODAS las ocurrencias de un bloque (puede estar duplicado en celdas + hojas_data).
+    Devuelve lista de tuplas (cell, block, celdas_list).
+    """
+    matches = []
+    for celdas in _iter_celdas_collections(schedule):
+        for cell in celdas:
+            for block in cell.get("bloques", []):
+                if block.get("id") == block_id:
+                    matches.append((cell, block, celdas))
+    return matches
+
 @api_router.put("/schedule/{schedule_id}/cell/{dia}/{hora_inicio}/block/{block_id}")
 async def update_block(
     schedule_id: str,
@@ -149,43 +172,39 @@ async def update_block(
     block_id: str,
     update: BlockUpdate
 ):
-    """Actualiza un bloque específico"""
+    """Actualiza un bloque específico (busca en todas las hojas)"""
     schedule = await db.schedules.find_one({"id": schedule_id}, {"_id": 0})
-    
+
     if not schedule:
         raise HTTPException(status_code=404, detail="Horario no encontrado")
-    
-    updated = False
-    for cell in schedule["celdas"]:
-        if cell["dia"] == dia and cell["hora_inicio"] == hora_inicio:
-            for block in cell["bloques"]:
-                if block["id"] == block_id:
-                    if update.materia is not None:
-                        block["materia"] = update.materia
-                    if update.materia_id is not None:
-                        block["materia_id"] = update.materia_id
-                    if update.grupo is not None:
-                        block["grupo"] = update.grupo
-                    if update.docente is not None:
-                        block["docente"] = update.docente
-                    if update.aula is not None:
-                        block["aula"] = update.aula
-                    
-                    block["estado"] = "confirmed"
-                    block["nivel_confianza"] = 1.0
-                    updated = True
-                    break
-            if updated:
-                break
-    
-    if not updated:
+
+    cell, block, _celdas = (None, None, None)
+    matches = _find_block_locations(schedule, block_id)
+    if matches:
+        cell, block, _celdas = matches[0]
+
+    if not block:
         raise HTTPException(status_code=404, detail="Bloque no encontrado")
-    
+
+    for _c, blk, _cl in matches:
+        if update.materia is not None:
+            blk["materia"] = update.materia
+        if update.materia_id is not None:
+            blk["materia_id"] = update.materia_id
+        if update.grupo is not None:
+            blk["grupo"] = update.grupo
+        if update.docente is not None:
+            blk["docente"] = update.docente
+        if update.aula is not None:
+            blk["aula"] = update.aula
+        blk["estado"] = "confirmed"
+        blk["nivel_confianza"] = 1.0
+
     await db.schedules.update_one(
         {"id": schedule_id},
-        {"$set": {"celdas": schedule["celdas"]}}
+        {"$set": {"celdas": schedule["celdas"], "hojas_data": schedule.get("hojas_data", {})}}
     )
-    
+
     return {"message": "Bloque actualizado exitosamente"}
 
 @api_router.delete("/schedule/{schedule_id}/cell/{dia}/{hora_inicio}/block/{block_id}")
@@ -195,27 +214,25 @@ async def delete_block(
     hora_inicio: str,
     block_id: str
 ):
-    """Elimina un bloque específico"""
+    """Elimina un bloque específico (busca en todas las hojas)"""
     schedule = await db.schedules.find_one({"id": schedule_id}, {"_id": 0})
-    
+
     if not schedule:
         raise HTTPException(status_code=404, detail="Horario no encontrado")
-    
-    updated = False
-    for cell in schedule["celdas"]:
-        if cell["dia"] == dia and cell["hora_inicio"] == hora_inicio:
-            cell["bloques"] = [b for b in cell["bloques"] if b["id"] != block_id]
-            updated = True
-            break
-    
-    if not updated:
+
+    matches = _find_block_locations(schedule, block_id)
+
+    if not matches:
         raise HTTPException(status_code=404, detail="Bloque no encontrado")
-    
+
+    for cell, _blk, _cl in matches:
+        cell["bloques"] = [b for b in cell["bloques"] if b["id"] != block_id]
+
     await db.schedules.update_one(
         {"id": schedule_id},
-        {"$set": {"celdas": schedule["celdas"]}}
+        {"$set": {"celdas": schedule["celdas"], "hojas_data": schedule.get("hojas_data", {})}}
     )
-    
+
     return {"message": "Bloque eliminado exitosamente"}
 
 @api_router.post("/schedule/{schedule_id}/export")
@@ -247,40 +264,31 @@ async def update_block_horarios(
     if not schedule:
         raise HTTPException(status_code=404, detail="Horario no encontrado")
     
-    block_found = None
-    parent_cell = None
-    
-    for cell in schedule["celdas"]:
-        for block in cell["bloques"]:
-            if block["id"] == block_id:
-                block_found = block
-                parent_cell = cell
-                break
-        if block_found:
-            break
-    
-    if not block_found:
+    matches = _find_block_locations(schedule, block_id)
+
+    if not matches:
         raise HTTPException(status_code=404, detail="Bloque no encontrado")
-    
+
     horarios_procesados = []
     for horario in horarios:
         bloques_cant, minutos = calcular_bloques_horarios(
-            horario["hora_inicio"], 
+            horario["hora_inicio"],
             horario["hora_fin"]
         )
-        
+
         horarios_procesados.append({
             "dia": horario["dia"],
             "hora_inicio": horario["hora_inicio"],
             "hora_fin": horario["hora_fin"],
             "bloques_cantidad": bloques_cant
         })
-    
-    block_found["horarios"] = horarios_procesados
-    
+
+    for _c, blk, _cl in matches:
+        blk["horarios"] = horarios_procesados
+
     await db.schedules.update_one(
         {"id": schedule_id},
-        {"$set": {"celdas": schedule["celdas"]}}
+        {"$set": {"celdas": schedule["celdas"], "hojas_data": schedule.get("hojas_data", {})}}
     )
     
     return {
@@ -392,28 +400,33 @@ async def move_block(schedule_id: str, move: BlockMove):
     
     block_found = None
     from_cell = None
-    
-    for cell in schedule["celdas"]:
-        if cell["dia"] == move.from_dia and cell["hora_inicio"] == move.from_hora_inicio:
-            from_cell = cell
-            for block in cell["bloques"]:
-                if block["id"] == move.block_id:
-                    block_found = block
-                    break
+    target_celdas = None  # la lista de celdas (hoja) donde vive el bloque
+
+    for celdas in _iter_celdas_collections(schedule):
+        for cell in celdas:
+            if cell["dia"] == move.from_dia and cell["hora_inicio"] == move.from_hora_inicio:
+                for block in cell["bloques"]:
+                    if block["id"] == move.block_id:
+                        block_found = block
+                        from_cell = cell
+                        target_celdas = celdas
+                        break
             if block_found:
                 break
-    
+        if block_found:
+            break
+
     if not block_found:
         raise HTTPException(status_code=404, detail="Bloque no encontrado")
-    
+
     from_cell["bloques"] = [b for b in from_cell["bloques"] if b["id"] != move.block_id]
-    
+
     to_cell = None
-    for cell in schedule["celdas"]:
+    for cell in target_celdas:
         if cell["dia"] == move.to_dia and cell["hora_inicio"] == move.to_hora_inicio:
             to_cell = cell
             break
-    
+
     if not to_cell:
         to_cell = {
             "dia": move.to_dia,
@@ -422,15 +435,15 @@ async def move_block(schedule_id: str, move: BlockMove):
             "bloques": [],
             "celda_ref": None
         }
-        schedule["celdas"].append(to_cell)
-    
+        target_celdas.append(to_cell)
+
     to_cell["bloques"].append(block_found)
-    
+
     await db.schedules.update_one(
         {"id": schedule_id},
-        {"$set": {"celdas": schedule["celdas"]}}
+        {"$set": {"celdas": schedule["celdas"], "hojas_data": schedule.get("hojas_data", {})}}
     )
-    
+
     return {"message": "Bloque movido exitosamente", "block_id": move.block_id}
 
 @api_router.get("/subjects", response_model=List[Subject])
