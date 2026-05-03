@@ -83,11 +83,15 @@ class ScheduleProcessor:
             
             for sheet_name in all_sheets:
                 reader.set_sheet(sheet_name)
-                
+
                 schedule_cells = reader.extract_schedule_cells()
                 preview_grid = reader.get_preview_grid()
                 start_row, start_col, dias, horas = reader.detect_schedule_structure()
-                
+
+                # Detectar y leer catálogo si existe en esta hoja
+                catalog_info = reader.detect_catalog()
+                catalog_entries = reader.read_catalog_entries(catalog_info) if catalog_info else []
+
                 processed_cells = []
                 merged_index = {}
                 total_confidence = 0.0
@@ -95,6 +99,11 @@ class ScheduleProcessor:
 
                 for cell_data in schedule_cells:
                     processed_cell = self._process_cell(cell_data)
+
+                    if catalog_entries:
+                        for blk in processed_cell.bloques:
+                            self._enrich_block_from_catalog(blk, catalog_entries)
+
                     key = (processed_cell.dia, processed_cell.hora_inicio)
                     if key in merged_index:
                         existing = processed_cells[merged_index[key]]
@@ -240,3 +249,41 @@ class ScheduleProcessor:
         )
         
         block.horarios.append(time_slot)
+
+
+    def _enrich_block_from_catalog(self, block: ScheduleBlock, catalog_entries: list):
+        """Enriquece un bloque con información del catálogo (docente, grupo, código).
+
+        Reglas:
+          - Solo rellena `docente` si el bloque NO tenía docente.
+          - Si el bloque no tiene grupo y la materia tiene un único grupo en el catálogo,
+            asigna ese grupo automáticamente.
+          - Threshold de fuzzy match: 85.
+          - Si hay match con (materia + grupo) confirma el bloque (estado=confirmed,
+            confianza=1.0).
+        """
+        from utils.catalog_reader import find_match
+
+        materia_text = block.materia or ""
+        grupo_text = block.grupo or ""
+
+        match, single_group = find_match(catalog_entries, materia_text, grupo_text, threshold=85)
+
+        if match:
+            if not block.docente and match.get("docente"):
+                block.docente = match["docente"]
+            if match.get("codigo") and not block.materia_id:
+                block.materia_id = match["codigo"]
+            block.estado = BlockStatus.CONFIRMED
+            block.nivel_confianza = max(block.nivel_confianza, 1.0)
+            return
+
+        if single_group and not block.grupo:
+            block.grupo = single_group["grupo"]
+            if not block.docente and single_group.get("docente"):
+                block.docente = single_group["docente"]
+            if single_group.get("codigo") and not block.materia_id:
+                block.materia_id = single_group["codigo"]
+            if block.estado == BlockStatus.UNKNOWN:
+                block.estado = BlockStatus.INFERRED
+            block.nivel_confianza = max(block.nivel_confianza, 0.85)

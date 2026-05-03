@@ -193,10 +193,13 @@ class ExcelReader:
         if not horas:
             return cells_data
 
+        # Limitar columnas al rango del horario (start_col ... start_col + len(dias))
+        # para no consumir tablas auxiliares (catálogo) que vienen a la derecha
+        days_end_col = start_col + len(dias)
+
         hora_by_row = {h[2]: (h[0], h[1]) for h in horas}
         first_time_row = horas[0][2]
         last_time_row = horas[-1][2]
-        # Permitir también filas inmediatamente después de la última hora conocida (rowspan al final)
         scan_end = min(last_time_row + 2, self.current_sheet.max_row)
 
         current_hora = None
@@ -207,16 +210,16 @@ class ExcelReader:
             if current_hora is None:
                 continue
 
-            # Detectar si esta fila parece un footer (texto largo en col A, sin hora)
-            a_val = self.current_sheet.cell(row=r, column=1).value
+            a_val = self.current_sheet.cell(row=r, column=start_col).value
             if r not in hora_by_row and isinstance(a_val, str):
                 stripped = a_val.strip()
                 if len(stripped) > 25 and len(stripped.split()) > 4:
-                    # Footer alcanzado — detener scan
                     break
 
             for dia_idx, dia in enumerate(dias):
                 col = start_col + 1 + dia_idx
+                if col > days_end_col:
+                    break
                 content = self.get_cell_content(r, col)
 
                 if content and content.lower() not in ['none', 'nan', '']:
@@ -236,6 +239,17 @@ class ExcelReader:
                     })
 
         return cells_data
+
+    def detect_catalog(self):
+        """Wrapper sobre catalog_reader.detect_catalog usando la columna fin del horario."""
+        from utils.catalog_reader import detect_catalog as _dc
+        _, start_col, dias, _ = self.detect_schedule_structure()
+        days_end_col = start_col + len(dias)
+        return _dc(self.current_sheet, days_end_col)
+
+    def read_catalog_entries(self, catalog: Dict) -> List[Dict]:
+        from utils.catalog_reader import read_catalog_entries as _rce
+        return _rce(self.current_sheet, catalog)
     
     def get_preview_grid(self, max_rows: int = 50, max_cols: int = 10) -> List[Dict]:
         """Genera una representación del Excel para preview"""
