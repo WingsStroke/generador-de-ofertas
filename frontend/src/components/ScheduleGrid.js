@@ -5,6 +5,8 @@ import axios from 'axios';
 import { useSchedule } from '../context/ScheduleContext';
 import { useHistory } from '../context/HistoryContext';
 import BlockEditor from './BlockEditor';
+import MultiBlockEditor from './MultiBlockEditor';
+import { Check } from 'lucide-react';
 import { toast } from 'sonner';
 import '@/App.css';
 
@@ -13,9 +15,18 @@ const API = `${BACKEND_URL}/api`;
 
 const ScheduleGrid = () => {
   const { scheduleId } = useParams();
-  const { scheduleData, setScheduleData, selectedCell, setSelectedCell } = useSchedule();
+  const {
+    scheduleData,
+    setScheduleData,
+    selectedCell,
+    setSelectedCell,
+    selectionMode,
+    selectedBlockIds,
+    toggleBlockSelection,
+  } = useSchedule();
   const { pushAction } = useHistory();
   const [editingBlock, setEditingBlock] = useState(null);
+  const [showMultiEditor, setShowMultiEditor] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [expandedCells, setExpandedCells] = useState(new Set());
 
@@ -39,7 +50,10 @@ const ScheduleGrid = () => {
 
   const handleBlockClick = (block, e) => {
     e.stopPropagation();
-    if (!isDragging) {
+    if (isDragging) return;
+    if (selectionMode) {
+      toggleBlockSelection(block.id);
+    } else {
       setEditingBlock(block);
     }
   };
@@ -216,11 +230,14 @@ const ScheduleGrid = () => {
                                 snapshot.isDraggingOver ? 'bg-blue-50' : ''
                               }`}
                             >
-                              {displayBlocks.map((block, index) => (
+                              {displayBlocks.map((block, index) => {
+                                const isSelected = selectedBlockIds.has(block.id);
+                                return (
                                 <Draggable
                                   key={block.id}
                                   draggableId={block.id}
                                   index={index}
+                                  isDragDisabled={selectionMode}
                                 >
                                   {(provided, snapshot) => (
                                     <div
@@ -229,10 +246,24 @@ const ScheduleGrid = () => {
                                       {...provided.dragHandleProps}
                                       className={`${getBlockClass(block.estado)} ${
                                         snapshot.isDragging ? 'shadow-lg' : ''
-                                      }`}
+                                      } ${
+                                        isSelected ? 'ring-2 ring-blue-500 ring-offset-1' : ''
+                                      } ${selectionMode ? 'cursor-pointer' : ''} relative`}
                                       onClick={(e) => handleBlockClick(block, e)}
                                       data-testid={`block-${block.id}`}
                                     >
+                                      {selectionMode && (
+                                        <div
+                                          className={`absolute top-1 right-1 w-4 h-4 rounded-sm border flex items-center justify-center ${
+                                            isSelected
+                                              ? 'bg-blue-600 border-blue-600 text-white'
+                                              : 'bg-white border-slate-300'
+                                          }`}
+                                          data-testid={`block-checkbox-${block.id}`}
+                                        >
+                                          {isSelected && <Check className="w-3 h-3" />}
+                                        </div>
+                                      )}
                                       <div className="font-medium text-slate-900">
                                         {block.materia}
                                       </div>
@@ -252,7 +283,8 @@ const ScheduleGrid = () => {
                                     </div>
                                   )}
                                 </Draggable>
-                              ))}
+                                );
+                              })}
                               
                               {hasMultipleBlocks && (
                                 <button
@@ -297,6 +329,28 @@ const ScheduleGrid = () => {
           block={editingBlock}
           onClose={() => setEditingBlock(null)}
         />
+      )}
+
+      {selectionMode && selectedBlockIds.size > 0 && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-white shadow-xl border border-slate-200 rounded-full px-4 py-2 flex items-center gap-3"
+          data-testid="multi-edit-fab"
+        >
+          <span className="text-sm font-medium text-slate-700">
+            {selectedBlockIds.size} bloque(s) seleccionado(s)
+          </span>
+          <button
+            onClick={() => setShowMultiEditor(true)}
+            className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-full hover:bg-blue-700 transition-colors font-medium"
+            data-testid="multi-edit-open-btn"
+          >
+            Editar
+          </button>
+        </div>
+      )}
+
+      {showMultiEditor && (
+        <MultiBlockEditor onClose={() => setShowMultiEditor(false)} />
       )}
     </>
   );

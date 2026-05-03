@@ -11,33 +11,31 @@ Aplicación web full-stack para extraer, visualizar, corregir y exportar informa
 
 ## Implementado (estado actual)
 - [x] Upload XLSX multi-hoja con selector de programa (`POST /api/upload`)
+- [x] Parser robusto: usa filas Excel reales, detecta etiquetas partidas (`"12:00 -"` + `"12:50"`) y filas con rowspan; word-boundary matching (`\b...\b`) para no confundir "HORARIO" con "HORA"
 - [x] Parser con detección de múltiples materias/grupos por celda
 - [x] Fuzzy matching contra diccionarios académicos (rapidfuzz)
 - [x] Cálculo automático de bloques de 50 min (`utils/time_utils.py`)
 - [x] Grid editable con tabs por hoja del Excel
-- [x] Vista previa del Excel original lado a lado
+- [x] Vista previa del Excel original lado a lado (1:1 con el archivo)
 - [x] Drag & drop entre celdas con undo/redo (`HistoryContext`)
 - [x] Editor de bloque con autocomplete fuzzy de materias
-- [x] **Pestaña "Horarios" en editor** para agregar/editar/eliminar intervalos de 50 min (día, hora_inicio, hora_fin) con badge dinámico de cantidad de bloques
+- [x] Pestaña "Horarios" para agregar/editar/eliminar intervalos de 50 min por bloque
 - [x] Búsqueda global cross-hoja (materia/docente/aula)
 - [x] Expansión visual cuando una celda tiene múltiples grupos
+- [x] **Edición múltiple**: modo selección con checkboxes, FAB "Editar N seleccionados" y dialog para aplicar cambios masivos (materia, grupo, docente, aula) con endpoint `PATCH /api/schedule/{id}/blocks/bulk`
+- [x] Update/delete/move/horarios funcionan correctamente en todas las hojas (no solo la primera)
 - [x] Exportación JSON multi-hoja
-- [x] Persistencia en MongoDB (sobrevive a restart de supervisor)
-- [x] 19/19 tests backend pytest + frontend E2E al 100%
+- [x] Persistencia en MongoDB
 
 ## Endpoints API
-- `GET /api/programs` - lista programas académicos
-- `POST /api/upload?program_id={id}` - sube XLSX
-- `GET /api/schedules` - lista horarios
-- `GET /api/schedule/{id}` - detalle
-- `PUT /api/schedule/{id}/cell/{dia}/{hora}/block/{block_id}` - actualiza bloque
-- `DELETE /api/schedule/{id}/cell/{dia}/{hora}/block/{block_id}` - elimina bloque
+- `GET /api/programs`, `POST /api/upload?program_id={id}`, `GET /api/schedules`, `GET /api/schedule/{id}`
+- `PUT /api/schedule/{id}/cell/{dia}/{hora}/block/{block_id}` - actualizar 1 bloque (busca en todas las hojas)
+- `DELETE /api/schedule/{id}/cell/{dia}/{hora}/block/{block_id}` - eliminar 1 bloque
+- `PATCH /api/schedule/{id}/blocks/bulk` - edición múltiple `{block_ids: [...], update: {...}}`
 - `POST /api/schedule/{id}/move-block` - drag & drop
 - `PUT /api/schedule/{id}/block/{block_id}/horarios` - actualiza intervalos 50 min
-- `POST /api/schedule/{id}/export` - exporta a JSON
-- `GET /api/schedule/{id}/search?q=...` - búsqueda fuzzy global
-- `GET /api/subjects?program_id=...` - diccionario de materias
-- `GET /api/subjects/search/{query}?program_id=...` - autocomplete fuzzy
+- `POST /api/schedule/{id}/export`, `GET /api/schedule/{id}/search?q=...`
+- `GET /api/subjects?program_id=...`, `GET /api/subjects/search/{query}?program_id=...`
 
 ## Backlog (P1)
 - Validar solapamiento server-side al guardar horarios (helper `validar_solapamiento` ya existe, falta cablear)

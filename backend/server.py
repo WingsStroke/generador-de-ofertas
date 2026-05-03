@@ -12,10 +12,16 @@ import shutil
 import tempfile
 from datetime import datetime
 
+from pydantic import BaseModel
 from models import (
     ProcessedSchedule, UploadResponse, BlockUpdate, BlockMove, Subject, ProgramaAcademico
 )
 from utils.schedule_processor import ScheduleProcessor
+
+
+class BulkBlockUpdate(BaseModel):
+    block_ids: List[str]
+    update: BlockUpdate
 from utils.export_helper import export_to_json_format
 
 ROOT_DIR = Path(__file__).parent
@@ -234,6 +240,50 @@ async def delete_block(
     )
 
     return {"message": "Bloque eliminado exitosamente"}
+
+@api_router.patch("/schedule/{schedule_id}/blocks/bulk")
+async def bulk_update_blocks(schedule_id: str, payload: BulkBlockUpdate):
+    """Actualiza múltiples bloques con los mismos campos. Solo se aplican campos no nulos."""
+    schedule = await db.schedules.find_one({"id": schedule_id}, {"_id": 0})
+
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Horario no encontrado")
+
+    update = payload.update
+    not_found = []
+    updated_ids = set()
+
+    for block_id in payload.block_ids:
+        matches = _find_block_locations(schedule, block_id)
+        if not matches:
+            not_found.append(block_id)
+            continue
+        for _c, blk, _cl in matches:
+            if update.materia is not None:
+                blk["materia"] = update.materia
+            if update.materia_id is not None:
+                blk["materia_id"] = update.materia_id
+            if update.grupo is not None:
+                blk["grupo"] = update.grupo
+            if update.docente is not None:
+                blk["docente"] = update.docente
+            if update.aula is not None:
+                blk["aula"] = update.aula
+            blk["estado"] = "confirmed"
+            blk["nivel_confianza"] = 1.0
+        updated_ids.add(block_id)
+
+    if updated_ids:
+        await db.schedules.update_one(
+            {"id": schedule_id},
+            {"$set": {"celdas": schedule["celdas"], "hojas_data": schedule.get("hojas_data", {})}}
+        )
+
+    return {
+        "message": f"{len(updated_ids)} bloque(s) actualizado(s)",
+        "updated": list(updated_ids),
+        "not_found": not_found,
+    }
 
 @api_router.post("/schedule/{schedule_id}/export")
 async def export_schedule(schedule_id: str):

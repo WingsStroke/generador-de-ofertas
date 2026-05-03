@@ -91,26 +91,71 @@ class ExcelReader:
         }
         return mapping.get(dia, dia[0])
     
-    def _extract_time_slots(self, start_row: int) -> List[Tuple[str, str]]:
-        """Extrae las franjas horarias"""
+    def _extract_time_slots(self, start_row: int) -> List[Tuple[str, str, int]]:
+        """Extrae las franjas horarias detectadas con la fila Excel real donde viven.
+
+        Maneja:
+          - Etiqueta normal "7:00 - 7:50" en una sola celda
+          - Etiqueta partida en 2 celdas consecutivas: "12:00 -" + "12:50"
+          - Etiquetas multilínea "9:30 -\n10:20"
+          - Filas de footer/descripción son ignoradas (texto largo, sin patrón de hora)
+        """
         time_pattern = re.compile(r'(\d{1,2})[:\s]*(\d{2})')
-        horas = []
-        
-        for row in self.current_sheet.iter_rows(min_row=start_row, max_row=start_row + 50):
-            cell_value = row[0].value
-            if cell_value and isinstance(cell_value, str):
-                matches = time_pattern.findall(cell_value)
-                if len(matches) >= 2:
-                    hora_inicio = f"{matches[0][0].zfill(2)}:{matches[0][1]}"
-                    hora_fin = f"{matches[1][0].zfill(2)}:{matches[1][1]}"
-                    horas.append((hora_inicio, hora_fin))
-        
-        if not horas:
-            horas = [("07:00", "08:40"), ("08:50", "10:30"), ("10:40", "12:20"), 
-                     ("12:30", "14:10"), ("14:20", "16:00"), ("16:10", "17:50"), 
-                     ("18:00", "19:40"), ("19:50", "21:30")]
-        
-        return horas
+        max_row = self.current_sheet.max_row
+
+        rows_data = []
+        for r in range(start_row, max_row + 1):
+            cell_value = self.current_sheet.cell(row=r, column=1).value
+            if isinstance(cell_value, str):
+                stripped = cell_value.strip()
+                matches = time_pattern.findall(stripped)
+                # Filtrar filas tipo footer: texto largo y muchas palabras
+                is_footer = len(stripped) > 25 and len(stripped.split()) > 4
+                rows_data.append((r, stripped, matches, is_footer))
+            else:
+                rows_data.append((r, None, [], False))
+
+        horas: List[Tuple[str, str, int]] = []
+        i = 0
+        while i < len(rows_data):
+            r, val, matches, is_footer = rows_data[i]
+            if is_footer:
+                i += 1
+                continue
+            if len(matches) >= 2:
+                inicio = f"{matches[0][0].zfill(2)}:{matches[0][1]}"
+                fin = f"{matches[1][0].zfill(2)}:{matches[1][1]}"
+                horas.append((inicio, fin, r))
+                i += 1
+            elif len(matches) == 1 and i + 1 < len(rows_data):
+                # Caso "12:00 -" + "12:50" en filas consecutivas
+                r2, val2, matches2, is_footer2 = rows_data[i + 1]
+                if not is_footer2 and len(matches2) >= 1:
+                    inicio = f"{matches[0][0].zfill(2)}:{matches[0][1]}"
+                    fin = f"{matches2[0][0].zfill(2)}:{matches2[0][1]}"
+                    horas.append((inicio, fin, r))
+                    i += 2
+                else:
+                    i += 1
+            else:
+                i += 1
+
+        # De-duplicar por hora_inicio (mantener primera aparición)
+        seen = set()
+        unique = []
+        for h in horas:
+            key = (h[0], h[1])
+            if key not in seen:
+                seen.add(key)
+                unique.append(h)
+
+        if not unique:
+            unique = [
+                ("07:00", "07:50", start_row), ("07:50", "08:40", start_row + 1),
+                ("08:40", "09:30", start_row + 2), ("09:30", "10:20", start_row + 3),
+            ]
+
+        return unique
     
     def get_cell_content(self, row: int, col: int) -> Optional[str]:
         """Obtiene el contenido de una celda"""
@@ -134,35 +179,32 @@ class ExcelReader:
         return merged_cells
     
     def extract_schedule_cells(self) -> List[Dict]:
-        """Extrae todas las celdas relevantes del horario"""
+        """Extrae todas las celdas relevantes del horario usando filas reales del Excel."""
         start_row, start_col, dias, horas = self.detect_schedule_structure()
-        merged_info = self.get_merged_cells()
-        
+
         cells_data = []
         dias_keywords = ["LUNES", "MARTES", "MIÉRCOLES", "MIERCOLES", "JUEVES", "VIERNES", "SÁBADO", "SABADO"]
-        
-        for hora_idx, (hora_inicio, hora_fin) in enumerate(horas):
+
+        for hora_inicio, hora_fin, real_row in horas:
             for dia_idx, dia in enumerate(dias):
-                row = start_row + 1 + hora_idx
                 col = start_col + 1 + dia_idx
-                
-                content = self.get_cell_content(row, col)
-                
+                content = self.get_cell_content(real_row, col)
+
                 if content and content.lower() not in ['none', 'nan', '']:
                     is_day_header = any(d in content.upper() for d in dias_keywords)
-                    
+
                     if not is_day_header:
-                        cell_ref = f"{get_column_letter(col)}{row}"
+                        cell_ref = f"{get_column_letter(col)}{real_row}"
                         cells_data.append({
                             "dia": dia,
                             "hora_inicio": hora_inicio,
                             "hora_fin": hora_fin,
                             "texto": content,
                             "celda_ref": cell_ref,
-                            "row": row,
+                            "row": real_row,
                             "col": col
                         })
-        
+
         return cells_data
     
     def get_preview_grid(self, max_rows: int = 50, max_cols: int = 10) -> List[Dict]:

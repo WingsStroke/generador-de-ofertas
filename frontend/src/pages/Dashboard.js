@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
-import { Download, ArrowLeft, FileText, Undo2, Redo2 } from 'lucide-react';
+import { Download, ArrowLeft, FileText, Undo2, Redo2, MousePointer2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { Badge } from '../components/ui/badge';
@@ -17,7 +17,7 @@ const API = `${BACKEND_URL}/api`;
 
 const Dashboard = () => {
   const { scheduleId } = useParams();
-  const { scheduleData, setScheduleData, setSubjects } = useSchedule();
+  const { scheduleData, setScheduleData, setSubjects, selectionMode, setSelectionMode, selectedBlockIds, exitSelectionMode } = useSchedule();
   const { canUndo, canRedo, hasUnsavedChanges, undo, redo } = useHistory();
   const [loading, setLoading] = useState(true);
   const [currentSheet, setCurrentSheet] = useState(null);
@@ -136,6 +136,24 @@ const Dashboard = () => {
         </div>
         <div className="flex items-center gap-2">
           <GlobalSearch onNavigate={handleNavigateFromSearch} />
+          <Button
+            variant={selectionMode ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => {
+              if (selectionMode) {
+                exitSelectionMode();
+              } else {
+                setSelectionMode(true);
+              }
+            }}
+            title="Selección múltiple"
+            data-testid="selection-mode-toggle"
+          >
+            <MousePointer2 className="w-4 h-4 mr-1" />
+            {selectionMode
+              ? `Selección (${selectedBlockIds.size})`
+              : 'Selección múltiple'}
+          </Button>
           <Button
             variant="outline"
             size="sm"
