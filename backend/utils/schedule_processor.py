@@ -36,13 +36,20 @@ class ScheduleProcessor:
                 start_row, start_col, dias, horas = reader.detect_schedule_structure()
                 
                 processed_cells = []
+                merged_index = {}
                 total_confidence = 0.0
                 total_blocks = 0
-                
+
                 for cell_data in schedule_cells:
                     processed_cell = self._process_cell(cell_data)
-                    processed_cells.append(processed_cell)
-                    
+                    key = (processed_cell.dia, processed_cell.hora_inicio)
+                    if key in merged_index:
+                        existing = processed_cells[merged_index[key]]
+                        existing.bloques.extend(processed_cell.bloques)
+                    else:
+                        merged_index[key] = len(processed_cells)
+                        processed_cells.append(processed_cell)
+
                     for block in processed_cell.bloques:
                         total_confidence += block.nivel_confianza
                         total_blocks += 1
@@ -82,13 +89,20 @@ class ScheduleProcessor:
                 start_row, start_col, dias, horas = reader.detect_schedule_structure()
                 
                 processed_cells = []
+                merged_index = {}
                 total_confidence = 0.0
                 total_blocks = 0
-                
+
                 for cell_data in schedule_cells:
                     processed_cell = self._process_cell(cell_data)
-                    processed_cells.append(processed_cell)
-                    
+                    key = (processed_cell.dia, processed_cell.hora_inicio)
+                    if key in merged_index:
+                        existing = processed_cells[merged_index[key]]
+                        existing.bloques.extend(processed_cell.bloques)
+                    else:
+                        merged_index[key] = len(processed_cells)
+                        processed_cells.append(processed_cell)
+
                     for block in processed_cell.bloques:
                         total_confidence += block.nivel_confianza
                         total_blocks += 1
