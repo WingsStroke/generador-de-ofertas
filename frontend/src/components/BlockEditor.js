@@ -81,21 +81,52 @@ const BlockEditor = ({ block, onClose }) => {
 
   const handleSave = async () => {
     try {
-      const cellData = scheduleData.celdas.find(
-        (c) =>
-          c.dia === getCellDia() &&
-          c.hora_inicio === getCellHoraInicio()
+      // Intentar localizar la celda por block.id en estado actual; fallback a día/hora
+      const findCellByBlock = (data) =>
+        data?.celdas?.find((c) => (c.bloques || []).some((b) => b.id === block.id));
+
+      let cellData = findCellByBlock(scheduleData) || scheduleData.celdas.find(
+        (c) => c.dia === getCellDia() && c.hora_inicio === getCellHoraInicio()
       );
 
-      if (!cellData) {
-        toast.error('No se pudo encontrar la celda');
-        return;
+      const doPut = async () =>
+        axios.put(
+          `${API}/schedule/${scheduleId}/cell/${cellData?.dia || 'L'}/${cellData?.hora_inicio || '00:00'}/block/${block.id}`,
+          formData
+        );
+
+      try {
+        await doPut();
+      } catch (err) {
+        // Si el bloque/horario no se encontró, refrescar y reintentar una vez
+        if (err?.response?.status === 404) {
+          try {
+            const fresh = await axios.get(`${API}/schedule/${scheduleId}`);
+            const hoja = fresh.data.hoja_actual || (fresh.data.hojas && fresh.data.hojas[0]);
+            const sheetData = fresh.data.hojas_data?.[hoja];
+            const refreshed = {
+              ...fresh.data,
+              hoja_actual: hoja,
+              celdas: sheetData?.celdas || fresh.data.celdas || [],
+              estructura_dias: sheetData?.estructura_dias || fresh.data.estructura_dias || [],
+              estructura_horas: sheetData?.estructura_horas || fresh.data.estructura_horas || [],
+              excel_preview: sheetData?.excel_preview || fresh.data.excel_preview || [],
+            };
+            setScheduleData(refreshed);
+            cellData = findCellByBlock(refreshed);
+            if (!cellData) {
+              toast.error('El bloque ya no existe. Horario actualizado.');
+              onClose();
+              return;
+            }
+            await doPut();
+          } catch (retryErr) {
+            throw retryErr;
+          }
+        } else {
+          throw err;
+        }
       }
-
-      await axios.put(
-        `${API}/schedule/${scheduleId}/cell/${cellData.dia}/${cellData.hora_inicio}/block/${block.id}`,
-        formData
-      );
 
       await axios.put(
         `${API}/schedule/${scheduleId}/block/${block.id}/horarios`,
@@ -106,15 +137,17 @@ const BlockEditor = ({ block, onClose }) => {
       const cell = updatedSchedule.celdas.find(
         (c) => c.dia === cellData.dia && c.hora_inicio === cellData.hora_inicio
       );
-      const blockIndex = cell.bloques.findIndex((b) => b.id === block.id);
-      if (blockIndex !== -1) {
-        cell.bloques[blockIndex] = {
-          ...cell.bloques[blockIndex],
-          ...formData,
-          horarios,
-          estado: 'confirmed',
-          nivel_confianza: 1.0,
-        };
+      if (cell) {
+        const blockIndex = cell.bloques.findIndex((b) => b.id === block.id);
+        if (blockIndex !== -1) {
+          cell.bloques[blockIndex] = {
+            ...cell.bloques[blockIndex],
+            ...formData,
+            horarios,
+            estado: 'confirmed',
+            nivel_confianza: 1.0,
+          };
+        }
       }
 
       setScheduleData(updatedSchedule);
@@ -122,7 +155,13 @@ const BlockEditor = ({ block, onClose }) => {
       onClose();
     } catch (error) {
       console.error('Error updating block:', error);
-      toast.error('Error al actualizar el bloque');
+      const status = error?.response?.status;
+      const detail = error?.response?.data?.detail;
+      if (status === 404) {
+        toast.error(detail || 'No se encontró el bloque en el servidor. Recarga la página.');
+      } else {
+        toast.error(`Error al actualizar el bloque${status ? ` (${status})` : ''}`);
+      }
     }
   };
 
