@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
@@ -6,7 +6,8 @@ import { useSchedule } from '../context/ScheduleContext';
 import { useHistory } from '../context/HistoryContext';
 import BlockEditor from './BlockEditor';
 import MultiBlockEditor from './MultiBlockEditor';
-import { Check } from 'lucide-react';
+import NewBlockDialog from './NewBlockDialog';
+import { Check, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import '@/App.css';
 
@@ -27,8 +28,30 @@ const ScheduleGrid = () => {
   const { pushAction } = useHistory();
   const [editingBlock, setEditingBlock] = useState(null);
   const [showMultiEditor, setShowMultiEditor] = useState(false);
+  const [newBlockSlot, setNewBlockSlot] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [expandedCells, setExpandedCells] = useState(new Set());
+
+  // Mapa de ghosts por celda (bloques que tienen horarios en esta celda pero su "home" es otra)
+  const ghostMap = useMemo(() => {
+    const map = new Map();
+    if (!scheduleData?.celdas) return map;
+    scheduleData.celdas.forEach((cell) => {
+      (cell.bloques || []).forEach((b) => {
+        (b.horarios || []).forEach((h) => {
+          if (h.dia === cell.dia && h.hora_inicio === cell.hora_inicio) return;
+          const key = `${h.dia}-${h.hora_inicio}`;
+          if (!map.has(key)) map.set(key, []);
+          map.get(key).push({
+            ...b,
+            _ghost: true,
+            _ownCell: { dia: cell.dia, hora_inicio: cell.hora_inicio },
+          });
+        });
+      });
+    });
+    return map;
+  }, [scheduleData]);
 
   if (!scheduleData) return null;
 
@@ -52,6 +75,7 @@ const ScheduleGrid = () => {
     e.stopPropagation();
     if (isDragging) return;
     if (selectionMode) {
+      if (block._ghost) return; // Ghosts no participan en selección múltiple
       toggleBlockSelection(block.id);
     } else {
       setEditingBlock(block);
@@ -218,26 +242,31 @@ const ScheduleGrid = () => {
                       <Droppable droppableId={cellId}>
                         {(provided, snapshot) => {
                           const bloques = cellData?.bloques || [];
-                          const hasMultipleBlocks = bloques.length > 1;
+                          const ghosts = ghostMap.get(cellId) || [];
+                          const combined = [...bloques, ...ghosts];
+                          const hasMultipleBlocks = combined.length > 1;
                           const isExpanded = isCellExpanded(cellId);
-                          const displayBlocks = isExpanded ? bloques : bloques.slice(0, 1);
-                          
+                          const displayBlocks = isExpanded ? combined : combined.slice(0, 1);
+                          const isEmpty = bloques.length === 0 && ghosts.length === 0;
+
                           return (
                             <div
                               ref={provided.innerRef}
                               {...provided.droppableProps}
-                              className={`min-h-[60px] ${
+                              className={`min-h-[60px] relative group ${
                                 snapshot.isDraggingOver ? 'bg-blue-50' : ''
                               }`}
                             >
                               {displayBlocks.map((block, index) => {
                                 const isSelected = selectedBlockIds.has(block.id);
+                                const isGhost = block._ghost === true;
+                                const draggableId = isGhost ? `ghost-${cellId}-${block.id}` : block.id;
                                 return (
                                 <Draggable
-                                  key={block.id}
-                                  draggableId={block.id}
+                                  key={draggableId}
+                                  draggableId={draggableId}
                                   index={index}
-                                  isDragDisabled={selectionMode}
+                                  isDragDisabled={selectionMode || isGhost}
                                 >
                                   {(provided, snapshot) => (
                                     <div
@@ -248,11 +277,18 @@ const ScheduleGrid = () => {
                                         snapshot.isDragging ? 'shadow-lg' : ''
                                       } ${
                                         isSelected ? 'ring-2 ring-blue-500 ring-offset-1' : ''
-                                      } ${selectionMode ? 'cursor-pointer' : ''} relative`}
+                                      } ${selectionMode ? 'cursor-pointer' : ''} ${
+                                        isGhost ? 'opacity-70 border-dashed' : ''
+                                      } relative`}
                                       onClick={(e) => handleBlockClick(block, e)}
-                                      data-testid={`block-${block.id}`}
+                                      data-testid={`block-${block.id}${isGhost ? '-ghost' : ''}`}
+                                      title={
+                                        isGhost
+                                          ? `Copia enlazada. Origen: ${block._ownCell.dia} ${block._ownCell.hora_inicio}`
+                                          : undefined
+                                      }
                                     >
-                                      {selectionMode && (
+                                      {selectionMode && !isGhost && (
                                         <div
                                           className={`absolute top-1 right-1 w-4 h-4 rounded-sm border flex items-center justify-center ${
                                             isSelected
@@ -262,6 +298,11 @@ const ScheduleGrid = () => {
                                           data-testid={`block-checkbox-${block.id}`}
                                         >
                                           {isSelected && <Check className="w-3 h-3" />}
+                                        </div>
+                                      )}
+                                      {isGhost && (
+                                        <div className="absolute top-1 right-1 text-[9px] font-medium text-slate-400 uppercase tracking-wide">
+                                          enlazado
                                         </div>
                                       )}
                                       <div className="font-medium text-slate-900">
@@ -285,7 +326,7 @@ const ScheduleGrid = () => {
                                 </Draggable>
                                 );
                               })}
-                              
+
                               {hasMultipleBlocks && (
                                 <button
                                   onClick={(e) => toggleCellExpansion(cellId, e)}
@@ -304,12 +345,26 @@ const ScheduleGrid = () => {
                                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                       </svg>
-                                      +{bloques.length - 1} más
+                                      +{combined.length - 1} más
                                     </>
                                   )}
                                 </button>
                               )}
-                              
+
+                              {isEmpty && !selectionMode && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setNewBlockSlot({ dia, hora_inicio: hora.inicio, hora_fin: hora.fin });
+                                  }}
+                                  className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-blue-600 hover:bg-blue-50/50"
+                                  data-testid={`add-block-${dia}-${hora.inicio}`}
+                                  title="Agregar materia"
+                                >
+                                  <Plus className="w-5 h-5" />
+                                </button>
+                              )}
+
                               {provided.placeholder}
                             </div>
                           );
@@ -351,6 +406,13 @@ const ScheduleGrid = () => {
 
       {showMultiEditor && (
         <MultiBlockEditor onClose={() => setShowMultiEditor(false)} />
+      )}
+
+      {newBlockSlot && (
+        <NewBlockDialog
+          cellSlot={newBlockSlot}
+          onClose={() => setNewBlockSlot(null)}
+        />
       )}
     </>
   );

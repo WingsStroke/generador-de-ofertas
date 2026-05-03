@@ -179,31 +179,61 @@ class ExcelReader:
         return merged_cells
     
     def extract_schedule_cells(self) -> List[Dict]:
-        """Extrae todas las celdas relevantes del horario usando filas reales del Excel."""
+        """Extrae todas las celdas relevantes del horario usando filas reales del Excel.
+
+        Incluye forward-fill: si una fila tiene contenido en columnas de clase pero
+        NO tiene etiqueta de hora, se atribuye a la última hora conocida. Esto permite
+        recuperar materias perdidas por celdas A vacías (problema de formato XLSX).
+        """
         start_row, start_col, dias, horas = self.detect_schedule_structure()
 
         cells_data = []
         dias_keywords = ["LUNES", "MARTES", "MIÉRCOLES", "MIERCOLES", "JUEVES", "VIERNES", "SÁBADO", "SABADO"]
 
-        for hora_inicio, hora_fin, real_row in horas:
+        if not horas:
+            return cells_data
+
+        hora_by_row = {h[2]: (h[0], h[1]) for h in horas}
+        first_time_row = horas[0][2]
+        last_time_row = horas[-1][2]
+        # Permitir también filas inmediatamente después de la última hora conocida (rowspan al final)
+        scan_end = min(last_time_row + 2, self.current_sheet.max_row)
+
+        current_hora = None
+        for r in range(first_time_row, scan_end + 1):
+            if r in hora_by_row:
+                current_hora = hora_by_row[r]
+
+            if current_hora is None:
+                continue
+
+            # Detectar si esta fila parece un footer (texto largo en col A, sin hora)
+            a_val = self.current_sheet.cell(row=r, column=1).value
+            if r not in hora_by_row and isinstance(a_val, str):
+                stripped = a_val.strip()
+                if len(stripped) > 25 and len(stripped.split()) > 4:
+                    # Footer alcanzado — detener scan
+                    break
+
             for dia_idx, dia in enumerate(dias):
                 col = start_col + 1 + dia_idx
-                content = self.get_cell_content(real_row, col)
+                content = self.get_cell_content(r, col)
 
                 if content and content.lower() not in ['none', 'nan', '']:
                     is_day_header = any(d in content.upper() for d in dias_keywords)
+                    if is_day_header:
+                        continue
 
-                    if not is_day_header:
-                        cell_ref = f"{get_column_letter(col)}{real_row}"
-                        cells_data.append({
-                            "dia": dia,
-                            "hora_inicio": hora_inicio,
-                            "hora_fin": hora_fin,
-                            "texto": content,
-                            "celda_ref": cell_ref,
-                            "row": real_row,
-                            "col": col
-                        })
+                    cell_ref = f"{get_column_letter(col)}{r}"
+                    cells_data.append({
+                        "dia": dia,
+                        "hora_inicio": current_hora[0],
+                        "hora_fin": current_hora[1],
+                        "texto": content,
+                        "celda_ref": cell_ref,
+                        "row": r,
+                        "col": col
+                    })
 
         return cells_data
     

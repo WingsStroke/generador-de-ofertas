@@ -133,24 +133,40 @@ const BlockEditor = ({ block, onClose }) => {
         horarios
       );
 
-      const updatedSchedule = { ...scheduleData };
-      const cell = updatedSchedule.celdas.find(
-        (c) => c.dia === cellData.dia && c.hora_inicio === cellData.hora_inicio
-      );
-      if (cell) {
-        const blockIndex = cell.bloques.findIndex((b) => b.id === block.id);
-        if (blockIndex !== -1) {
-          cell.bloques[blockIndex] = {
-            ...cell.bloques[blockIndex],
-            ...formData,
-            horarios,
-            estado: 'confirmed',
-            nivel_confianza: 1.0,
-          };
+      // Refrescar todo el schedule para reflejar cambios (horarios → ghosts en el grid)
+      try {
+        const fresh = await axios.get(`${API}/schedule/${scheduleId}`);
+        const hoja = scheduleData.hoja_actual || fresh.data.hoja_actual;
+        const sheetData = fresh.data.hojas_data?.[hoja];
+        setScheduleData({
+          ...fresh.data,
+          hoja_actual: hoja,
+          celdas: sheetData?.celdas || fresh.data.celdas || [],
+          estructura_dias: sheetData?.estructura_dias || fresh.data.estructura_dias || [],
+          estructura_horas: sheetData?.estructura_horas || fresh.data.estructura_horas || [],
+          excel_preview: sheetData?.excel_preview || fresh.data.excel_preview || [],
+        });
+      } catch (_e) {
+        // Fallback a mutación local si el refetch falla
+        const updatedSchedule = { ...scheduleData };
+        const cell = updatedSchedule.celdas.find(
+          (c) => c.dia === cellData.dia && c.hora_inicio === cellData.hora_inicio
+        );
+        if (cell) {
+          const blockIndex = cell.bloques.findIndex((b) => b.id === block.id);
+          if (blockIndex !== -1) {
+            cell.bloques[blockIndex] = {
+              ...cell.bloques[blockIndex],
+              ...formData,
+              horarios,
+              estado: 'confirmed',
+              nivel_confianza: 1.0,
+            };
+          }
         }
+        setScheduleData(updatedSchedule);
       }
 
-      setScheduleData(updatedSchedule);
       toast.success('Bloque actualizado exitosamente');
       onClose();
     } catch (error) {

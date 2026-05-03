@@ -6,7 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import json
 import shutil
 import tempfile
@@ -22,6 +22,18 @@ from utils.schedule_processor import ScheduleProcessor
 class BulkBlockUpdate(BaseModel):
     block_ids: List[str]
     update: BlockUpdate
+
+
+class BlockCreate(BaseModel):
+    sheet: str
+    dia: str
+    hora_inicio: str
+    hora_fin: str
+    materia: Optional[str] = None
+    materia_id: Optional[str] = None
+    grupo: Optional[str] = None
+    docente: Optional[str] = None
+    aula: Optional[str] = None
 from utils.export_helper import export_to_json_format
 
 ROOT_DIR = Path(__file__).parent
@@ -240,6 +252,68 @@ async def delete_block(
     )
 
     return {"message": "Bloque eliminado exitosamente"}
+
+@api_router.post("/schedule/{schedule_id}/block")
+async def create_block(schedule_id: str, payload: BlockCreate):
+    """Crea un nuevo bloque en la celda indicada (día/hora) de una hoja específica.
+
+    Si la celda aún no existe, se crea. Si la hoja indicada es `hoja_actual`, también
+    se sincroniza con el array top-level `celdas`.
+    """
+    import uuid
+    from utils.time_utils import calcular_bloques_horarios
+
+    schedule = await db.schedules.find_one({"id": schedule_id}, {"_id": 0})
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Horario no encontrado")
+
+    hojas_data = schedule.get("hojas_data") or {}
+    if payload.sheet not in hojas_data:
+        raise HTTPException(status_code=404, detail=f"Hoja '{payload.sheet}' no encontrada")
+
+    bloques_cantidad, _ = calcular_bloques_horarios(payload.hora_inicio, payload.hora_fin)
+    new_block = {
+        "id": str(uuid.uuid4()),
+        "materia": payload.materia,
+        "materia_id": payload.materia_id,
+        "grupo": payload.grupo,
+        "docente": payload.docente,
+        "aula": payload.aula,
+        "nivel_confianza": 1.0,
+        "estado": "confirmed",
+        "celda_origen": None,
+        "texto_original": None,
+        "horarios": [{
+            "dia": payload.dia,
+            "hora_inicio": payload.hora_inicio,
+            "hora_fin": payload.hora_fin,
+            "bloques_cantidad": bloques_cantidad,
+        }],
+    }
+
+    def _add_to(celdas: List[Dict]):
+        for cell in celdas:
+            if cell.get("dia") == payload.dia and cell.get("hora_inicio") == payload.hora_inicio:
+                cell.setdefault("bloques", []).append(new_block)
+                return
+        celdas.append({
+            "dia": payload.dia,
+            "hora_inicio": payload.hora_inicio,
+            "hora_fin": payload.hora_fin,
+            "bloques": [new_block],
+            "celda_ref": None,
+        })
+
+    _add_to(hojas_data[payload.sheet].setdefault("celdas", []))
+    if schedule.get("hoja_actual") == payload.sheet:
+        _add_to(schedule.setdefault("celdas", []))
+
+    await db.schedules.update_one(
+        {"id": schedule_id},
+        {"$set": {"celdas": schedule.get("celdas", []), "hojas_data": hojas_data}}
+    )
+
+    return {"message": "Bloque creado exitosamente", "block": new_block}
 
 @api_router.patch("/schedule/{schedule_id}/blocks/bulk")
 async def bulk_update_blocks(schedule_id: str, payload: BulkBlockUpdate):
