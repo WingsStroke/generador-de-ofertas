@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
@@ -31,27 +31,6 @@ const ScheduleGrid = () => {
   const [newBlockSlot, setNewBlockSlot] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [expandedCells, setExpandedCells] = useState(new Set());
-
-  // Mapa de ghosts por celda (bloques que tienen horarios en esta celda pero su "home" es otra)
-  const ghostMap = useMemo(() => {
-    const map = new Map();
-    if (!scheduleData?.celdas) return map;
-    scheduleData.celdas.forEach((cell) => {
-      (cell.bloques || []).forEach((b) => {
-        (b.horarios || []).forEach((h) => {
-          if (h.dia === cell.dia && h.hora_inicio === cell.hora_inicio) return;
-          const key = `${h.dia}-${h.hora_inicio}`;
-          if (!map.has(key)) map.set(key, []);
-          map.get(key).push({
-            ...b,
-            _ghost: true,
-            _ownCell: { dia: cell.dia, hora_inicio: cell.hora_inicio },
-          });
-        });
-      });
-    });
-    return map;
-  }, [scheduleData]);
 
   if (!scheduleData) return null;
 
@@ -242,12 +221,10 @@ const ScheduleGrid = () => {
                       <Droppable droppableId={cellId}>
                         {(provided, snapshot) => {
                           const bloques = cellData?.bloques || [];
-                          const ghosts = ghostMap.get(cellId) || [];
-                          const combined = [...bloques, ...ghosts];
-                          const hasMultipleBlocks = combined.length > 1;
+                          const hasMultipleBlocks = bloques.length > 1;
                           const isExpanded = isCellExpanded(cellId);
-                          const displayBlocks = isExpanded ? combined : combined.slice(0, 1);
-                          const isEmpty = bloques.length === 0 && ghosts.length === 0;
+                          const displayBlocks = isExpanded ? bloques : bloques.slice(0, 1);
+                          const isEmpty = bloques.length === 0;
 
                           return (
                             <div
@@ -259,14 +236,12 @@ const ScheduleGrid = () => {
                             >
                               {displayBlocks.map((block, index) => {
                                 const isSelected = selectedBlockIds.has(block.id);
-                                const isGhost = block._ghost === true;
-                                const draggableId = isGhost ? `ghost-${cellId}-${block.id}` : block.id;
                                 return (
                                 <Draggable
-                                  key={draggableId}
-                                  draggableId={draggableId}
+                                  key={block.id}
+                                  draggableId={block.id}
                                   index={index}
-                                  isDragDisabled={selectionMode || isGhost}
+                                  isDragDisabled={selectionMode}
                                 >
                                   {(provided, snapshot) => (
                                     <div
@@ -277,18 +252,11 @@ const ScheduleGrid = () => {
                                         snapshot.isDragging ? 'shadow-lg' : ''
                                       } ${
                                         isSelected ? 'ring-2 ring-blue-500 ring-offset-1' : ''
-                                      } ${selectionMode ? 'cursor-pointer' : ''} ${
-                                        isGhost ? 'opacity-70 border-dashed' : ''
-                                      } relative`}
+                                      } ${selectionMode ? 'cursor-pointer' : ''} relative`}
                                       onClick={(e) => handleBlockClick(block, e)}
-                                      data-testid={`block-${block.id}${isGhost ? '-ghost' : ''}`}
-                                      title={
-                                        isGhost
-                                          ? `Copia enlazada. Origen: ${block._ownCell.dia} ${block._ownCell.hora_inicio}`
-                                          : undefined
-                                      }
+                                      data-testid={`block-${block.id}`}
                                     >
-                                      {selectionMode && !isGhost && (
+                                      {selectionMode && (
                                         <div
                                           className={`absolute top-1 right-1 w-4 h-4 rounded-sm border flex items-center justify-center ${
                                             isSelected
@@ -298,11 +266,6 @@ const ScheduleGrid = () => {
                                           data-testid={`block-checkbox-${block.id}`}
                                         >
                                           {isSelected && <Check className="w-3 h-3" />}
-                                        </div>
-                                      )}
-                                      {isGhost && (
-                                        <div className="absolute top-1 right-1 text-[9px] font-medium text-slate-400 uppercase tracking-wide">
-                                          enlazado
                                         </div>
                                       )}
                                       <div className="font-medium text-slate-900">
@@ -345,7 +308,7 @@ const ScheduleGrid = () => {
                                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                       </svg>
-                                      +{combined.length - 1} más
+                                      +{bloques.length - 1} más
                                     </>
                                   )}
                                 </button>

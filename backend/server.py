@@ -516,56 +516,77 @@ async def search_in_schedule(
 
 @api_router.post("/schedule/{schedule_id}/move-block")
 async def move_block(schedule_id: str, move: BlockMove):
-    """Mueve un bloque a una nueva celda (drag & drop)"""
+    """Mueve un bloque a una nueva celda (drag & drop). Sincroniza en TODAS las
+    colecciones donde el bloque exista (top-level + hojas_data) y actualiza horarios."""
+    from utils.time_utils import calcular_bloques_horarios
+
     schedule = await db.schedules.find_one({"id": schedule_id}, {"_id": 0})
-    
+
     if not schedule:
         raise HTTPException(status_code=404, detail="Horario no encontrado")
-    
-    block_found = None
-    from_cell = None
-    target_celdas = None  # la lista de celdas (hoja) donde vive el bloque
 
+    # Localizar TODAS las copias del bloque
+    matches = []  # list of (cell, block, celdas_list)
     for celdas in _iter_celdas_collections(schedule):
         for cell in celdas:
-            if cell["dia"] == move.from_dia and cell["hora_inicio"] == move.from_hora_inicio:
-                for block in cell["bloques"]:
-                    if block["id"] == move.block_id:
-                        block_found = block
-                        from_cell = cell
-                        target_celdas = celdas
+            if cell.get("dia") == move.from_dia and cell.get("hora_inicio") == move.from_hora_inicio:
+                for block in cell.get("bloques", []):
+                    if block.get("id") == move.block_id:
+                        matches.append((cell, block, celdas))
                         break
-            if block_found:
-                break
-        if block_found:
-            break
 
-    if not block_found:
+    if not matches:
         raise HTTPException(status_code=404, detail="Bloque no encontrado")
 
-    from_cell["bloques"] = [b for b in from_cell["bloques"] if b["id"] != move.block_id]
+    bloques_cant, _ = calcular_bloques_horarios(move.to_hora_inicio, move.to_hora_fin)
+    new_horario = {
+        "dia": move.to_dia,
+        "hora_inicio": move.to_hora_inicio,
+        "hora_fin": move.to_hora_fin,
+        "bloques_cantidad": bloques_cant,
+    }
 
-    to_cell = None
-    for cell in target_celdas:
-        if cell["dia"] == move.to_dia and cell["hora_inicio"] == move.to_hora_inicio:
-            to_cell = cell
-            break
+    moved_block = None
+    for from_cell, block, target_celdas in matches:
+        # Sincronizar horarios
+        horarios = block.get("horarios") or []
+        replaced = False
+        for i, h in enumerate(horarios):
+            if h.get("dia") == move.from_dia and h.get("hora_inicio") == move.from_hora_inicio:
+                horarios[i] = dict(new_horario)
+                replaced = True
+                break
+        if not replaced:
+            if horarios:
+                horarios[0] = dict(new_horario)
+            else:
+                horarios = [dict(new_horario)]
+        block["horarios"] = horarios
 
-    if not to_cell:
-        to_cell = {
-            "dia": move.to_dia,
-            "hora_inicio": move.to_hora_inicio,
-            "hora_fin": move.to_hora_fin,
-            "bloques": [],
-            "celda_ref": None
-        }
-        target_celdas.append(to_cell)
+        # Quitar de from_cell
+        from_cell["bloques"] = [b for b in from_cell["bloques"] if b["id"] != move.block_id]
 
-    to_cell["bloques"].append(block_found)
+        # Insertar en to_cell de la MISMA colección
+        to_cell = None
+        for cell in target_celdas:
+            if cell.get("dia") == move.to_dia and cell.get("hora_inicio") == move.to_hora_inicio:
+                to_cell = cell
+                break
+        if not to_cell:
+            to_cell = {
+                "dia": move.to_dia,
+                "hora_inicio": move.to_hora_inicio,
+                "hora_fin": move.to_hora_fin,
+                "bloques": [],
+                "celda_ref": None,
+            }
+            target_celdas.append(to_cell)
+        to_cell["bloques"].append(block)
+        moved_block = block
 
     await db.schedules.update_one(
         {"id": schedule_id},
-        {"$set": {"celdas": schedule["celdas"], "hojas_data": schedule.get("hojas_data", {})}}
+        {"$set": {"celdas": schedule.get("celdas", []), "hojas_data": schedule.get("hojas_data", {})}}
     )
 
     return {"message": "Bloque movido exitosamente", "block_id": move.block_id}
