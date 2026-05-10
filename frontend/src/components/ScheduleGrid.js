@@ -275,13 +275,15 @@ const ScheduleGrid = () => {
                                         <div className="text-slate-600">({block.grupo})</div>
                                       )}
                                       {block.docente && (
-                                        <div className="text-slate-600 text-[10px] mt-1">
-                                          {block.docente}
+                                        <div className="text-blue-600 text-[10px] mt-1 flex items-center gap-0.5">
+                                          <span title="Docente">👤</span>
+                                          <span>{block.docente}</span>
                                         </div>
                                       )}
                                       {block.aula && (
-                                        <div className="text-slate-500 text-[10px]">
-                                          {block.aula}
+                                        <div className="text-emerald-600 text-[10px] flex items-center gap-0.5">
+                                          <span title="Aula">📍</span>
+                                          <span>{block.aula}</span>
                                         </div>
                                       )}
                                     </div>

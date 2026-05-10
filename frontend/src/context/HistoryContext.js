@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 
 const HistoryContext = createContext();
 
@@ -11,89 +11,95 @@ export const useHistory = () => {
 };
 
 export const HistoryProvider = ({ children }) => {
-  const [history, setHistory] = useState([]);
-  const [currentIndex, setCurrentIndex] = useState(-1);
+  // Usar ref para el historial para evitar stale closures
+  const historyRef = useRef([]);
+  const indexRef = useRef(-1);
+
+  // Estado solo para forzar re-render y exponer canUndo/canRedo
+  const [snapshot, setSnapshot] = useState({ length: 0, index: -1 });
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
+  const syncSnapshot = useCallback(() => {
+    setSnapshot({ length: historyRef.current.length, index: indexRef.current });
+  }, []);
+
   const pushAction = useCallback((action) => {
-    setHistory((prev) => {
-      const newHistory = prev.slice(0, currentIndex + 1);
-      newHistory.push(action);
-      return newHistory.slice(-50);
-    });
-    setCurrentIndex((prev) => Math.min(prev + 1, 49));
+    // Descartar el futuro si estamos en medio del historial
+    historyRef.current = historyRef.current.slice(0, indexRef.current + 1);
+    historyRef.current.push(action);
+    // Limitar a 50 entradas
+    if (historyRef.current.length > 50) {
+      historyRef.current = historyRef.current.slice(-50);
+    }
+    indexRef.current = historyRef.current.length - 1;
     setHasUnsavedChanges(true);
-  }, [currentIndex]);
+    syncSnapshot();
+  }, [syncSnapshot]);
 
-  const undo = useCallback(() => {
-    if (currentIndex >= 0) {
-      const action = history[currentIndex];
-      setCurrentIndex((prev) => prev - 1);
-      return action;
+  // performUndo ejecuta el callback onUndo directamente
+  const performUndo = useCallback(() => {
+    if (indexRef.current < 0) return;
+    const action = historyRef.current[indexRef.current];
+    indexRef.current -= 1;
+    syncSnapshot();
+    if (action && action.onUndo) {
+      action.onUndo();
     }
-    return null;
-  }, [currentIndex, history]);
+  }, [syncSnapshot]);
 
-  const redo = useCallback(() => {
-    if (currentIndex < history.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
-      const action = history[currentIndex + 1];
-      return action;
+  // performRedo ejecuta el callback onRedo directamente
+  const performRedo = useCallback(() => {
+    if (indexRef.current >= historyRef.current.length - 1) return;
+    indexRef.current += 1;
+    const action = historyRef.current[indexRef.current];
+    syncSnapshot();
+    if (action && action.onRedo) {
+      action.onRedo();
     }
-    return null;
-  }, [currentIndex, history]);
+  }, [syncSnapshot]);
 
-  const canUndo = currentIndex >= 0;
-  const canRedo = currentIndex < history.length - 1;
+  const canUndo = snapshot.index >= 0;
+  const canRedo = snapshot.index < snapshot.length - 1;
 
   const clearHistory = useCallback(() => {
-    setHistory([]);
-    setCurrentIndex(-1);
+    historyRef.current = [];
+    indexRef.current = -1;
     setHasUnsavedChanges(false);
-  }, []);
+    syncSnapshot();
+  }, [syncSnapshot]);
 
   const markAsSaved = useCallback(() => {
     setHasUnsavedChanges(false);
   }, []);
 
+  // Atajos de teclado
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        if (canUndo) {
-          const action = undo();
-          if (action && action.onUndo) {
-            action.onUndo();
-          }
-        }
+        performUndo();
       }
-      
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
         e.preventDefault();
-        if (canRedo) {
-          const action = redo();
-          if (action && action.onRedo) {
-            action.onRedo();
-          }
-        }
+        performRedo();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canUndo, canRedo, undo, redo]);
+  }, [performUndo, performRedo]);
 
   const value = {
     pushAction,
-    undo,
-    redo,
+    undo: performUndo,
+    redo: performRedo,
     canUndo,
     canRedo,
     hasUnsavedChanges,
     clearHistory,
     markAsSaved,
-    historyLength: history.length,
-    currentIndex,
+    historyLength: snapshot.length,
+    currentIndex: snapshot.index,
   };
 
   return <HistoryContext.Provider value={value}>{children}</HistoryContext.Provider>;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -14,6 +14,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { toast } from 'sonner';
 import { useSchedule } from '../context/ScheduleContext';
+import { useHistory } from '../context/HistoryContext';
 import { Search, Plus } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -22,6 +23,7 @@ const API = `${BACKEND_URL}/api`;
 const NewBlockDialog = ({ cellSlot, onClose }) => {
   const { scheduleId } = useParams();
   const { scheduleData, setScheduleData } = useSchedule();
+  const { pushAction } = useHistory();
   const [formData, setFormData] = useState({
     materia: '',
     materia_id: '',
@@ -33,6 +35,17 @@ const NewBlockDialog = ({ cellSlot, onClose }) => {
   const [searching, setSearching] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [saving, setSaving] = useState(false);
+  const suggestionsRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const searchSubjects = async () => {
@@ -73,8 +86,12 @@ const NewBlockDialog = ({ cellSlot, onClose }) => {
       return;
     }
     setSaving(true);
+    
+    // Guardar estado anterior para undo
+    const previousSchedule = JSON.parse(JSON.stringify(scheduleData));
+    
     try {
-      await axios.post(`${API}/schedule/${scheduleId}/block`, {
+      const response = await axios.post(`${API}/schedule/${scheduleId}/block`, {
         sheet: scheduleData.hoja_actual,
         dia: cellSlot.dia,
         hora_inicio: cellSlot.hora_inicio,
@@ -86,17 +103,57 @@ const NewBlockDialog = ({ cellSlot, onClose }) => {
         aula: formData.aula.trim() || null,
       });
 
+      const newBlockId = response.data.block.id;
+
       // Refrescar estado
       const fresh = await axios.get(`${API}/schedule/${scheduleId}`);
       const hoja = scheduleData.hoja_actual;
       const sheetData = fresh.data.hojas_data?.[hoja];
-      setScheduleData({
+      // Forzar copia profunda para trigger de re-render de React
+      const celdasCopy = JSON.parse(JSON.stringify(sheetData?.celdas || fresh.data.celdas || []));
+      const updatedSchedule = {
         ...fresh.data,
         hoja_actual: hoja,
-        celdas: sheetData?.celdas || fresh.data.celdas || [],
-        estructura_dias: sheetData?.estructura_dias || fresh.data.estructura_dias || [],
-        estructura_horas: sheetData?.estructura_horas || fresh.data.estructura_horas || [],
-        excel_preview: sheetData?.excel_preview || fresh.data.excel_preview || [],
+        celdas: celdasCopy,
+        estructura_dias: [...(sheetData?.estructura_dias || fresh.data.estructura_dias || [])],
+        estructura_horas: [...(sheetData?.estructura_horas || fresh.data.estructura_horas || [])],
+        excel_preview: [...(sheetData?.excel_preview || fresh.data.excel_preview || [])],
+      };
+      setScheduleData(updatedSchedule);
+
+      // Registrar en historial
+      pushAction({
+        type: 'CREATE_BLOCK',
+        description: `Crear bloque: ${formData.materia}`,
+        payload: {
+          blockId: newBlockId,
+          cellSlot,
+          materia: formData.materia,
+        },
+        onUndo: () => {
+          setScheduleData(previousSchedule);
+          // También eliminar del backend
+          axios.delete(`${API}/schedule/${scheduleId}/block/${newBlockId}`).catch(console.error);
+        },
+        onRedo: async () => {
+          // Recrear el bloque
+          try {
+            await axios.post(`${API}/schedule/${scheduleId}/block`, {
+              sheet: scheduleData.hoja_actual,
+              dia: cellSlot.dia,
+              hora_inicio: cellSlot.hora_inicio,
+              hora_fin: cellSlot.hora_fin,
+              materia: formData.materia.trim(),
+              materia_id: formData.materia_id || null,
+              grupo: formData.grupo.trim() || null,
+              docente: formData.docente.trim() || null,
+              aula: formData.aula.trim() || null,
+            });
+            setScheduleData(updatedSchedule);
+          } catch (e) {
+            console.error('Error en redo:', e);
+          }
+        },
       });
 
       toast.success('Materia agregada');
@@ -130,6 +187,7 @@ const NewBlockDialog = ({ cellSlot, onClose }) => {
                 id="nb-materia"
                 value={formData.materia}
                 onChange={(e) => handleChange('materia', e.target.value)}
+                onFocus={() => formData.materia.length >= 2 && setShowSuggestions(true)}
                 placeholder="Buscar materia..."
                 data-testid="nb-materia-input"
               />
@@ -139,7 +197,7 @@ const NewBlockDialog = ({ cellSlot, onClose }) => {
                 </div>
               )}
               {showSuggestions && suggestions.length > 0 && (
-                <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+                <div ref={suggestionsRef} className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-auto">
                   {suggestions.map((s) => (
                     <button
                       key={s.id}

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
-import { Download, ArrowLeft, FileText, Undo2, Redo2, MousePointer2 } from 'lucide-react';
+import { Download, ArrowLeft, FileText, Undo2, Redo2, MousePointer2, List } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { Badge } from '../components/ui/badge';
@@ -11,6 +11,7 @@ import { useHistory } from '../context/HistoryContext';
 import ScheduleGrid from '../components/ScheduleGrid';
 import ExcelPreview from '../components/ExcelPreview';
 import GlobalSearch from '../components/GlobalSearch';
+import SubjectsSummary from '../components/SubjectsSummary';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -21,6 +22,7 @@ const Dashboard = () => {
   const { canUndo, canRedo, hasUnsavedChanges, undo, redo } = useHistory();
   const [loading, setLoading] = useState(true);
   const [currentSheet, setCurrentSheet] = useState(null);
+  const [showSummary, setShowSummary] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -174,6 +176,16 @@ const Dashboard = () => {
           >
             <Redo2 className="w-4 h-4" />
           </Button>
+          <Button
+            variant={showSummary ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setShowSummary((v) => !v)}
+            title="Resumen de asignaturas"
+            data-testid="summary-toggle-btn"
+          >
+            <List className="w-4 h-4 mr-1" />
+            Asignaturas
+          </Button>
           <Button onClick={handleExport} data-testid="export-json-btn">
             <Download className="w-4 h-4 mr-2" />
             Exportar JSON
@@ -210,7 +222,7 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              <div className="flex-1 flex flex-col min-w-0 h-full bg-white">
+              <div className="flex-1 flex flex-col min-w-0 h-full bg-white border-r border-slate-200">
                 <div className="h-12 border-b border-slate-200 px-4 flex items-center justify-between bg-slate-50/50">
                   <h2 className="text-sm font-semibold text-slate-700">Vista Original - {currentSheet}</h2>
                 </div>
@@ -218,6 +230,12 @@ const Dashboard = () => {
                   <ExcelPreview key={currentSheet} />
                 </div>
               </div>
+
+              {showSummary && (
+                <div className="w-72 shrink-0 flex flex-col h-full bg-white border-l border-slate-200">
+                  <SubjectsSummary onNavigate={handleNavigateFromSearch} />
+                </div>
+              )}
             </div>
           </Tabs>
         ) : (
@@ -231,7 +249,7 @@ const Dashboard = () => {
               </div>
             </div>
 
-            <div className="flex-1 flex flex-col min-w-0 h-full bg-white">
+            <div className="flex-1 flex flex-col min-w-0 h-full bg-white border-r border-slate-200">
               <div className="h-12 border-b border-slate-200 px-4 flex items-center justify-between bg-slate-50/50">
                 <h2 className="text-sm font-semibold text-slate-700">Vista Original</h2>
               </div>
@@ -239,6 +257,12 @@ const Dashboard = () => {
                 <ExcelPreview />
               </div>
             </div>
+
+            {showSummary && (
+              <div className="w-72 shrink-0 flex flex-col h-full bg-white border-l border-slate-200">
+                <SubjectsSummary onNavigate={handleNavigateFromSearch} />
+              </div>
+            )}
           </>
         )}
       </div>

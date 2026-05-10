@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -17,6 +17,7 @@ import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { toast } from 'sonner';
 import { useSchedule } from '../context/ScheduleContext';
+import { useHistory } from '../context/HistoryContext';
 import { Search, Trash2, Plus, Clock, Calendar } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -25,6 +26,7 @@ const API = `${BACKEND_URL}/api`;
 const BlockEditor = ({ block, onClose }) => {
   const { scheduleId } = useParams();
   const { scheduleData, setScheduleData, subjects } = useSchedule();
+  const { pushAction } = useHistory();
   const [formData, setFormData] = useState({
     materia: block.materia || '',
     materia_id: block.materia_id || '',
@@ -37,6 +39,17 @@ const BlockEditor = ({ block, onClose }) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searching, setSearching] = useState(false);
   const [activeTab, setActiveTab] = useState('info');
+  const suggestionsRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const searchSubjects = async () => {
@@ -80,6 +93,9 @@ const BlockEditor = ({ block, onClose }) => {
   };
 
   const handleSave = async () => {
+    // Capturar estado anterior para undo
+    const previousSchedule = JSON.parse(JSON.stringify(scheduleData));
+
     try {
       // Intentar localizar la celda por block.id en estado actual; fallback a día/hora
       const findCellByBlock = (data) =>
@@ -133,23 +149,15 @@ const BlockEditor = ({ block, onClose }) => {
         horarios
       );
 
-      // Refrescar todo el schedule para reflejar cambios (horarios → ghosts en el grid)
-      try {
-        const fresh = await axios.get(`${API}/schedule/${scheduleId}`);
-        const hoja = scheduleData.hoja_actual || fresh.data.hoja_actual;
-        const sheetData = fresh.data.hojas_data?.[hoja];
-        setScheduleData({
-          ...fresh.data,
-          hoja_actual: hoja,
-          celdas: sheetData?.celdas || fresh.data.celdas || [],
-          estructura_dias: sheetData?.estructura_dias || fresh.data.estructura_dias || [],
-          estructura_horas: sheetData?.estructura_horas || fresh.data.estructura_horas || [],
-          excel_preview: sheetData?.excel_preview || fresh.data.excel_preview || [],
-        });
-      } catch (_e) {
-        // Fallback a mutación local si el refetch falla
-        const updatedSchedule = { ...scheduleData };
-        const cell = updatedSchedule.celdas.find(
+      // Aplicar mutación local directa para no pisar cambios en memoria no persistidos.
+      // El backend ya actualizó el bloque; no hacemos refetch para evitar perder ediciones
+      // previas (movimientos, etc.) que solo viven en el estado local del frontend.
+      const updatedSchedule = JSON.parse(JSON.stringify(scheduleData));
+      const currentSheet = updatedSchedule.hoja_actual;
+
+      const applyBlockUpdate = (celdas) => {
+        if (!celdas) return;
+        const cell = celdas.find(
           (c) => c.dia === cellData.dia && c.hora_inicio === cellData.hora_inicio
         );
         if (cell) {
@@ -164,8 +172,29 @@ const BlockEditor = ({ block, onClose }) => {
             };
           }
         }
-        setScheduleData(updatedSchedule);
+      };
+
+      // Actualizar en celdas top-level
+      applyBlockUpdate(updatedSchedule.celdas);
+
+      // Actualizar también en hojas_data para consistencia al cambiar de pestaña
+      if (updatedSchedule.hojas_data && currentSheet && updatedSchedule.hojas_data[currentSheet]) {
+        applyBlockUpdate(updatedSchedule.hojas_data[currentSheet].celdas);
       }
+
+      setScheduleData(updatedSchedule);
+
+      // Registrar en historial
+      pushAction({
+        type: 'UPDATE_BLOCK',
+        description: `Editar: ${formData.materia || 'Bloque'}`,
+        onUndo: () => {
+          setScheduleData(previousSchedule);
+        },
+        onRedo: () => {
+          setScheduleData(updatedSchedule);
+        },
+      });
 
       toast.success('Bloque actualizado exitosamente');
       onClose();
@@ -222,29 +251,65 @@ const BlockEditor = ({ block, onClose }) => {
   };
 
   const handleDelete = async () => {
+    // Guardar estado anterior para undo (con el bloque incluido, copia profunda)
+    const previousSchedule = JSON.parse(JSON.stringify(scheduleData));
+
+    // Guardar datos del bloque para poder recrearlo en redo
+    const blockData = JSON.parse(JSON.stringify(block));
+
+    // Buscar la celda en celdas top-level (hoja actual)
+    const cellData = scheduleData.celdas.find(
+      (c) => c.bloques && c.bloques.some((b) => b.id === block.id)
+    );
+    const dia = cellData?.dia;
+    const horaInicio = cellData?.hora_inicio;
+    const horaFin = cellData?.hora_fin;
+    const currentSheet = scheduleData.hoja_actual;
+
     try {
-      const cellData = scheduleData.celdas.find(
-        (c) =>
-          c.dia === getCellDia() &&
-          c.hora_inicio === getCellHoraInicio()
-      );
-
-      if (!cellData) {
-        toast.error('No se pudo encontrar la celda');
-        return;
-      }
-
       await axios.delete(
         `${API}/schedule/${scheduleId}/cell/${cellData.dia}/${cellData.hora_inicio}/block/${block.id}`
       );
 
-      const updatedSchedule = { ...scheduleData };
-      const cell = updatedSchedule.celdas.find(
+      // Construir estado actualizado con el bloque eliminado tanto en celdas como en hojas_data
+      const updatedSchedule = JSON.parse(JSON.stringify(scheduleData));
+
+      // Actualizar celdas top-level
+      const topCell = updatedSchedule.celdas.find(
         (c) => c.dia === cellData.dia && c.hora_inicio === cellData.hora_inicio
       );
-      cell.bloques = cell.bloques.filter((b) => b.id !== block.id);
+      if (topCell) topCell.bloques = topCell.bloques.filter((b) => b.id !== block.id);
+
+      // Actualizar también en hojas_data para mantener consistencia al cambiar de pestaña
+      if (updatedSchedule.hojas_data && currentSheet && updatedSchedule.hojas_data[currentSheet]) {
+        const sheetCells = updatedSchedule.hojas_data[currentSheet].celdas;
+        const sheetCell = sheetCells?.find(
+          (c) => c.dia === cellData.dia && c.hora_inicio === cellData.hora_inicio
+        );
+        if (sheetCell) sheetCell.bloques = sheetCell.bloques.filter((b) => b.id !== block.id);
+      }
 
       setScheduleData(updatedSchedule);
+
+      // Registrar en historial
+      pushAction({
+        type: 'DELETE_BLOCK',
+        description: `Eliminar: ${blockData.materia || 'Bloque'}`,
+        payload: {
+          blockId: block.id,
+          blockData,
+          cellSlot: { dia, hora_inicio: horaInicio, hora_fin: horaFin },
+        },
+        onUndo: () => {
+          // Restaurar estado anterior completo (incluye hojas_data y celdas)
+          setScheduleData(previousSchedule);
+        },
+        onRedo: () => {
+          // Volver a aplicar la eliminación (ya calculada)
+          setScheduleData(updatedSchedule);
+        },
+      });
+
       toast.success('Bloque eliminado exitosamente');
       onClose();
     } catch (error) {
@@ -332,6 +397,7 @@ const BlockEditor = ({ block, onClose }) => {
                   id="materia"
                   value={formData.materia}
                   onChange={(e) => handleChange('materia', e.target.value)}
+                  onFocus={() => formData.materia.length >= 2 && setShowSuggestions(true)}
                   placeholder="Buscar materia..."
                   data-testid="materia-input"
                 />
@@ -341,7 +407,7 @@ const BlockEditor = ({ block, onClose }) => {
                   </div>
                 )}
                 {showSuggestions && suggestions.length > 0 && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+                  <div ref={suggestionsRef} className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-auto">
                     {suggestions.map((subject) => (
                       <button
                         key={subject.id}

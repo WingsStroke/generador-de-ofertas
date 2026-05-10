@@ -16,7 +16,8 @@ import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
 import { toast } from 'sonner';
 import { useSchedule } from '../context/ScheduleContext';
-import { Search, X } from 'lucide-react';
+import { useHistory } from '../context/HistoryContext';
+import { Search, X, Trash2 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -30,6 +31,7 @@ const MultiBlockEditor = ({ onClose }) => {
     toggleBlockSelection,
     exitSelectionMode,
   } = useSchedule();
+  const { pushAction } = useHistory();
 
   const [formData, setFormData] = useState({
     materia: '',
@@ -42,6 +44,8 @@ const MultiBlockEditor = ({ onClose }) => {
   const [searching, setSearching] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const selectedBlocks = useMemo(() => {
     if (!scheduleData) return [];
@@ -106,11 +110,78 @@ const MultiBlockEditor = ({ onClose }) => {
     setShowSuggestions(false);
   };
 
+  const handleDelete = async () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+
+    const previousSchedule = JSON.parse(JSON.stringify(scheduleData));
+    setDeleting(true);
+    try {
+      const block_ids = Array.from(selectedBlockIds);
+      const res = await axios.delete(
+        `${API}/schedule/${scheduleId}/blocks/bulk`,
+        { data: { block_ids } }
+      );
+
+      const fresh = await axios.get(`${API}/schedule/${scheduleId}`);
+      const currentSheet = scheduleData?.hoja_actual;
+
+      const updatedHojasData = {};
+      Object.entries(fresh.data.hojas_data || {}).forEach(([hoja, info]) => {
+        const filteredCeldas = (info.celdas || []).map((cell) => ({
+          ...cell,
+          bloques: (cell.bloques || []).filter((b) => !selectedBlockIds.has(b.id)),
+        }));
+        updatedHojasData[hoja] = { ...info, celdas: filteredCeldas };
+      });
+
+      const currentSheetData = updatedHojasData[currentSheet] || {};
+      const updatedCeldas = (currentSheetData.celdas || fresh.data.celdas || []).map((cell) => ({
+        ...cell,
+        bloques: (cell.bloques || []).filter((b) => !selectedBlockIds.has(b.id)),
+      }));
+
+      const updatedSchedule = {
+        ...fresh.data,
+        hojas_data: updatedHojasData,
+        hoja_actual: currentSheet,
+        celdas: updatedCeldas,
+        estructura_dias: currentSheetData.estructura_dias || fresh.data.estructura_dias || [],
+        estructura_horas: currentSheetData.estructura_horas || fresh.data.estructura_horas || [],
+        excel_preview: currentSheetData.excel_preview || fresh.data.excel_preview || [],
+      };
+
+      setScheduleData(updatedSchedule);
+
+      pushAction({
+        type: 'BULK_DELETE_BLOCKS',
+        description: `Eliminar ${block_ids.length} bloques`,
+        onUndo: () => setScheduleData(previousSchedule),
+        onRedo: () => setScheduleData(updatedSchedule),
+      });
+
+      exitSelectionMode();
+      toast.success(`${res.data.deleted.length} bloque(s) eliminado(s)`);
+      onClose();
+    } catch (error) {
+      console.error('Error bulk delete:', error);
+      toast.error('Error al eliminar los bloques');
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
+
   const handleSave = async () => {
     if (selectedBlocks.length === 0) {
       toast.error('No hay bloques seleccionados');
       return;
     }
+    
+    // Guardar estado anterior para undo
+    const previousSchedule = JSON.parse(JSON.stringify(scheduleData));
     const update = {};
     if (formData.materia.trim()) update.materia = formData.materia.trim();
     if (formData.materia_id.trim()) update.materia_id = formData.materia_id.trim();
@@ -134,18 +205,62 @@ const MultiBlockEditor = ({ onClose }) => {
       // Refrescar schedule completo para mantener todas las hojas sincronizadas
       const fresh = await axios.get(`${API}/schedule/${scheduleId}`);
       const currentSheet = scheduleData?.hoja_actual;
-      const sheetData = fresh.data.hojas_data?.[currentSheet];
-      setScheduleData({
-        ...fresh.data,
-        hoja_actual: currentSheet,
-        celdas: sheetData?.celdas || fresh.data.celdas || [],
-        estructura_dias: sheetData?.estructura_dias || fresh.data.estructura_dias || [],
-        estructura_horas: sheetData?.estructura_horas || fresh.data.estructura_horas || [],
-        excel_preview: sheetData?.excel_preview || fresh.data.excel_preview || [],
+
+      // Aplicar los cambios en hojas_data para todas las hojas
+      const updatedHojasData = {};
+      Object.entries(fresh.data.hojas_data || {}).forEach(([hoja, info]) => {
+        const updatedCeldas = (info.celdas || []).map((cell) => ({
+          ...cell,
+          bloques: (cell.bloques || []).map((b) =>
+            selectedBlockIds.has(b.id)
+              ? { ...b, ...update, nivel_confianza: 1.0, estado: 'confirmed' }
+              : b
+          ),
+        }));
+        updatedHojasData[hoja] = { ...info, celdas: updatedCeldas };
       });
 
-      toast.success(`${res.data.updated.length} bloque(s) actualizado(s)`);
+      // Reconstruir celdas de la hoja actual con los cambios aplicados
+      const currentSheetData = updatedHojasData[currentSheet] || {};
+      const updatedCeldas = (currentSheetData.celdas || fresh.data.celdas || []).map((cell) => ({
+        ...cell,
+        bloques: (cell.bloques || []).map((b) =>
+          selectedBlockIds.has(b.id)
+            ? { ...b, ...update, nivel_confianza: 1.0, estado: 'confirmed' }
+            : b
+        ),
+      }));
+
+      const updatedSchedule = {
+        ...fresh.data,
+        hojas_data: updatedHojasData,
+        hoja_actual: currentSheet,
+        celdas: updatedCeldas,
+        estructura_dias: currentSheetData.estructura_dias || fresh.data.estructura_dias || [],
+        estructura_horas: currentSheetData.estructura_horas || fresh.data.estructura_horas || [],
+        excel_preview: currentSheetData.excel_preview || fresh.data.excel_preview || [],
+      };
+
+      setScheduleData(updatedSchedule);
+
+      // Registrar en historial
+      pushAction({
+        type: 'BULK_UPDATE_BLOCKS',
+        description: `Actualizar ${selectedBlockIds.length} bloques`,
+        payload: {
+          blockIds: selectedBlockIds,
+          update: update,
+        },
+        onUndo: () => {
+          setScheduleData(previousSchedule);
+        },
+        onRedo: () => {
+          setScheduleData(updatedSchedule);
+        },
+      });
+
       exitSelectionMode();
+      toast.success(`${res.data.updated.length} bloque(s) actualizado(s)`);
       onClose();
     } catch (error) {
       console.error('Error bulk update:', error);
@@ -274,17 +389,32 @@ const MultiBlockEditor = ({ onClose }) => {
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={saving}>
-            Cancelar
-          </Button>
+        <DialogFooter className="flex-row items-center justify-between gap-2 sm:justify-between">
           <Button
-            onClick={handleSave}
-            disabled={saving || selectedBlocks.length === 0}
-            data-testid="multi-save-btn"
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={deleting || saving || selectedBlocks.length === 0}
+            data-testid="multi-delete-btn"
           >
-            {saving ? 'Guardando...' : `Aplicar a ${selectedBlocks.length} bloque(s)`}
+            <Trash2 className="w-4 h-4 mr-1.5" />
+            {deleting
+              ? 'Eliminando...'
+              : confirmDelete
+              ? `¿Confirmar eliminación de ${selectedBlocks.length} bloque(s)?`
+              : `Eliminar ${selectedBlocks.length} bloque(s)`}
           </Button>
+          <div className="flex gap-2 ml-auto">
+            <Button variant="outline" onClick={() => { setConfirmDelete(false); onClose(); }} disabled={saving || deleting}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={saving || deleting || selectedBlocks.length === 0}
+              data-testid="multi-save-btn"
+            >
+              {saving ? 'Guardando...' : `Aplicar a ${selectedBlocks.length} bloque(s)`}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

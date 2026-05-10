@@ -3,6 +3,12 @@ from openpyxl.utils import get_column_letter
 from typing import List, Dict, Tuple, Optional
 import re
 
+# Nuevos componentes para manejo de esquemas variables
+from utils.merged_cell_handler import MergedCellHandler
+from utils.variable_header_detector import VariableHeaderDetector
+from utils.inline_catalog_extractor import InlineCatalogExtractor, InlineCatalogEntry
+
+
 class ExcelReader:
     """Lee archivos Excel y detecta la estructura del horario"""
     
@@ -178,12 +184,15 @@ class ExcelReader:
             })
         return merged_cells
     
-    def extract_schedule_cells(self) -> List[Dict]:
+    def extract_schedule_cells(self, use_merged_handler: bool = True) -> List[Dict]:
         """Extrae todas las celdas relevantes del horario usando filas reales del Excel.
 
         Incluye forward-fill: si una fila tiene contenido en columnas de clase pero
         NO tiene etiqueta de hora, se atribuye a la última hora conocida. Esto permite
         recuperar materias perdidas por celdas A vacías (problema de formato XLSX).
+        
+        Args:
+            use_merged_handler: Si True, usa MergedCellHandler para manejar celdas fusionadas
         """
         start_row, start_col, dias, horas = self.detect_schedule_structure()
 
@@ -192,6 +201,11 @@ class ExcelReader:
 
         if not horas:
             return cells_data
+
+        # Inicializar MergedCellHandler si se solicita
+        merged_handler = None
+        if use_merged_handler:
+            merged_handler = MergedCellHandler(self.current_sheet)
 
         # Limitar columnas al rango del horario (start_col ... start_col + len(dias))
         # para no consumir tablas auxiliares (catálogo) que vienen a la derecha
@@ -210,7 +224,12 @@ class ExcelReader:
             if current_hora is None:
                 continue
 
-            a_val = self.current_sheet.cell(row=r, column=start_col).value
+            # Obtener valor de columna A usando merged_handler si está disponible
+            if merged_handler:
+                a_val = merged_handler.get_effective_value(r, start_col)
+            else:
+                a_val = self.current_sheet.cell(row=r, column=start_col).value
+                
             if r not in hora_by_row and isinstance(a_val, str):
                 stripped = a_val.strip()
                 if len(stripped) > 25 and len(stripped.split()) > 4:
@@ -220,7 +239,14 @@ class ExcelReader:
                 col = start_col + 1 + dia_idx
                 if col > days_end_col:
                     break
-                content = self.get_cell_content(r, col)
+                
+                # Obtener contenido usando merged_handler si está disponible
+                if merged_handler:
+                    content = merged_handler.get_effective_value(r, col)
+                    if content:
+                        content = str(content).strip()
+                else:
+                    content = self.get_cell_content(r, col)
 
                 if content and content.lower() not in ['none', 'nan', '']:
                     is_day_header = any(d in content.upper() for d in dias_keywords)
@@ -285,6 +311,67 @@ class ExcelReader:
                 })
         
         return preview_cells
+    
+    def detect_header_row_adaptive(self) -> int:
+        """
+        Detecta la fila de headers usando VariableHeaderDetector.
+        
+        Returns:
+            Número de fila con los headers (1-based)
+        """
+        detector = VariableHeaderDetector()
+        return detector.detect_header_row(self.current_sheet)
+    
+    def detect_inline_catalog(self, header_row: int = None) -> Optional[Dict]:
+        """
+        Detecta si existe un catálogo inline en la hoja.
+        
+        Args:
+            header_row: Fila de headers (si None, se detecta automáticamente)
+            
+        Returns:
+            Dict con estructura del catálogo o None
+        """
+        if header_row is None:
+            header_row = self.detect_header_row_adaptive()
+        
+        extractor = InlineCatalogExtractor()
+        return extractor.detect_catalog_structure(self.current_sheet, header_row)
+    
+    def extract_inline_catalog(self, header_row: int = None) -> List[InlineCatalogEntry]:
+        """
+        Extrae el catálogo inline de la hoja.
+        
+        Args:
+            header_row: Fila de headers (si None, se detecta automáticamente)
+            
+        Returns:
+            Lista de entradas del catálogo
+        """
+        if header_row is None:
+            header_row = self.detect_header_row_adaptive()
+        
+        # Crear MergedCellHandler para manejar celdas fusionadas
+        merged_handler = MergedCellHandler(self.current_sheet)
+        
+        extractor = InlineCatalogExtractor(merged_handler)
+        structure = extractor.detect_catalog_structure(self.current_sheet, header_row)
+        
+        if not structure:
+            return []
+        
+        entries = extractor.extract_catalog(
+            self.current_sheet, 
+            header_row, 
+            structure
+        )
+        
+        # Deduplicar entradas
+        return extractor.deduplicate_entries(entries)
+    
+    def get_merged_cell_handler(self) -> MergedCellHandler:
+        """Retorna un MergedCellHandler para la hoja actual."""
+        return MergedCellHandler(self.current_sheet)
     
     def close(self):
         """Cierra el workbook"""

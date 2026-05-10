@@ -3,7 +3,7 @@ import os
 import pytest
 import requests
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://timetable-validator.preview.emergentagent.com').rstrip('/')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'http://localhost:8000').rstrip('/')
 # Support both older and newer test file locations
 TEST_FILE = '/tmp/test.xlsx' if os.path.exists('/tmp/test.xlsx') else '/tmp/test_schedule.xlsx'
 

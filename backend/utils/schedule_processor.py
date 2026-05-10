@@ -21,7 +21,11 @@ class ScheduleProcessor:
         self.matcher = SubjectMatcher(subject_dict)
     
     def process_file(self, file_path: str, filename: str, programa_id: str = None, programa_nombre: str = None, process_all_sheets: bool = True) -> ProcessedSchedule:
-        """Procesa un archivo Excel completo"""
+        """
+        Procesa un archivo Excel completo.
+        
+        El ExcelReader se cierra automáticamente al finalizar, incluso si hay errores.
+        """
         reader = ExcelReader(file_path)
         
         try:
@@ -77,6 +81,9 @@ class ScheduleProcessor:
                 
                 return schedule
             
+            # Si llegamos aquí, process_all_sheets es True
+            # El código continúa después del bloque finally
+            
             hojas_data = {}
             total_confidence_all = 0.0
             total_blocks_all = 0
@@ -84,13 +91,37 @@ class ScheduleProcessor:
             for sheet_name in all_sheets:
                 reader.set_sheet(sheet_name)
 
-                schedule_cells = reader.extract_schedule_cells()
+                # Extraer celdas usando merged_handler para mejor manejo de celdas fusionadas
+                schedule_cells = reader.extract_schedule_cells(use_merged_handler=True)
                 preview_grid = reader.get_preview_grid()
                 start_row, start_col, dias, horas = reader.detect_schedule_structure()
 
-                # Detectar y leer catálogo si existe en esta hoja
-                catalog_info = reader.detect_catalog()
-                catalog_entries = reader.read_catalog_entries(catalog_info) if catalog_info else []
+                # Detectar catálogo: primero intentar inline, luego hoja separada
+                catalog_entries = []
+                
+                # 1. Intentar catálogo inline (formato Alimentos 2026)
+                inline_catalog = reader.extract_inline_catalog(header_row=start_row)
+                if inline_catalog:
+                    from utils.catalog_reader import _normalize, _norm_grupo
+                    # Convertir InlineCatalogEntry a formato dict esperado por _enrich_block_from_catalog
+                    # Incluyendo claves normalizadas que espera find_match
+                    catalog_entries = [
+                        {
+                            'nombre': entry.nombre,
+                            'horas': entry.horas,
+                            'codigo': entry.codigo,
+                            'grupo': entry.grupo,
+                            'fila_excel': entry.fila_excel,
+                            'materia_norm': _normalize(entry.nombre),
+                            'grupo_norm': _norm_grupo(entry.grupo) if entry.grupo else ""
+                        }
+                        for entry in inline_catalog
+                    ]
+                
+                # 2. Si no hay inline, intentar catálogo en hoja separada
+                if not catalog_entries:
+                    catalog_info = reader.detect_catalog()
+                    catalog_entries = reader.read_catalog_entries(catalog_info) if catalog_info else []
 
                 processed_cells = []
                 merged_index = {}
