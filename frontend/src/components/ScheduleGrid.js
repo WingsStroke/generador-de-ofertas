@@ -108,12 +108,14 @@ const ScheduleGrid = () => {
     const previousSchedule = JSON.parse(JSON.stringify(scheduleData));
 
     try {
+      const sourceHoraData = estructura_horas.find((h) => h.inicio === sourceHora);
       const destHoraData = estructura_horas.find((h) => h.inicio === destHora);
 
       await axios.post(`${API}/schedule/${scheduleId}/move-block`, {
         block_id: blockId,
         from_dia: sourceDia,
         from_hora_inicio: sourceHora,
+        from_hora_fin: sourceHoraData?.fin || sourceHora,
         to_dia: destDia,
         to_hora_inicio: destHora,
         to_hora_fin: destHoraData?.fin || destHora,
@@ -153,9 +155,11 @@ const ScheduleGrid = () => {
         },
         onUndo: () => {
           setScheduleData(previousSchedule);
+          axios.put(`${API}/schedule/${scheduleId}/state`, previousSchedule).catch(console.error);
         },
         onRedo: () => {
           setScheduleData(updatedSchedule);
+          axios.put(`${API}/schedule/${scheduleId}/state`, updatedSchedule).catch(console.error);
         },
       });
 
@@ -178,6 +182,20 @@ const ScheduleGrid = () => {
         return `${baseClass} block-error`;
       default:
         return `${baseClass} block-unknown`;
+    }
+  };
+
+  const getStatusIndicator = (estado, confianza) => {
+    const pct = Math.round((confianza || 0) * 100);
+    switch (estado) {
+      case 'confirmed':
+        return { color: 'bg-emerald-500', shadow: 'shadow-emerald-200', title: `Confirmado (${pct}%)` };
+      case 'inferred':
+        return { color: 'bg-amber-500', shadow: 'shadow-amber-200', title: `Dudoso/Inferido (${pct}%)` };
+      case 'error':
+        return { color: 'bg-rose-500', shadow: 'shadow-rose-200', title: `Error de extracción (${pct}%)` };
+      default:
+        return { color: 'bg-slate-400', shadow: 'shadow-slate-200', title: `Desconocido` };
     }
   };
 
@@ -243,51 +261,60 @@ const ScheduleGrid = () => {
                                   index={index}
                                   isDragDisabled={selectionMode}
                                 >
-                                  {(provided, snapshot) => (
-                                    <div
-                                      ref={provided.innerRef}
-                                      {...provided.draggableProps}
-                                      {...provided.dragHandleProps}
-                                      className={`${getBlockClass(block.estado)} ${
-                                        snapshot.isDragging ? 'shadow-lg' : ''
-                                      } ${
-                                        isSelected ? 'ring-2 ring-blue-500 ring-offset-1' : ''
-                                      } ${selectionMode ? 'cursor-pointer' : ''} relative`}
-                                      onClick={(e) => handleBlockClick(block, e)}
-                                      data-testid={`block-${block.id}`}
-                                    >
-                                      {selectionMode && (
-                                        <div
-                                          className={`absolute top-1 right-1 w-4 h-4 rounded-sm border flex items-center justify-center ${
-                                            isSelected
-                                              ? 'bg-blue-600 border-blue-600 text-white'
-                                              : 'bg-white border-slate-300'
-                                          }`}
-                                          data-testid={`block-checkbox-${block.id}`}
-                                        >
-                                          {isSelected && <Check className="w-3 h-3" />}
+                                  {(provided, snapshot) => {
+                                    const statusConfig = getStatusIndicator(block.estado, block.nivel_confianza);
+                                    return (
+                                      <div
+                                        ref={provided.innerRef}
+                                        {...provided.draggableProps}
+                                        {...provided.dragHandleProps}
+                                        className={`${getBlockClass(block.estado)} ${
+                                          snapshot.isDragging ? 'shadow-lg' : ''
+                                        } ${
+                                          isSelected ? 'ring-2 ring-blue-500 ring-offset-1' : ''
+                                        } ${selectionMode ? 'cursor-pointer' : ''} relative`}
+                                        onClick={(e) => handleBlockClick(block, e)}
+                                        data-testid={`block-${block.id}`}
+                                      >
+                                        {/* Semáforo de confianza */}
+                                        <div 
+                                          className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full shadow-sm ${statusConfig.color} ${statusConfig.shadow}`}
+                                          title={statusConfig.title}
+                                        />
+
+                                        {selectionMode && (
+                                          <div
+                                            className={`absolute top-1 right-6 w-4 h-4 rounded-sm border flex items-center justify-center ${
+                                              isSelected
+                                                ? 'bg-blue-600 border-blue-600 text-white'
+                                                : 'bg-white border-slate-300'
+                                            }`}
+                                            data-testid={`block-checkbox-${block.id}`}
+                                          >
+                                            {isSelected && <Check className="w-3 h-3" />}
+                                          </div>
+                                        )}
+                                        <div className="font-medium text-slate-900 pr-5">
+                                          {block.materia}
                                         </div>
-                                      )}
-                                      <div className="font-medium text-slate-900">
-                                        {block.materia}
+                                        {block.grupo && (
+                                          <div className="text-slate-600">({block.grupo})</div>
+                                        )}
+                                        {block.docente && (
+                                          <div className="text-blue-600 text-[10px] mt-1 flex items-center gap-0.5">
+                                            <span title="Docente">👤</span>
+                                            <span>{block.docente}</span>
+                                          </div>
+                                        )}
+                                        {block.aula && (
+                                          <div className="text-emerald-600 text-[10px] flex items-center gap-0.5">
+                                            <span title="Aula">📍</span>
+                                            <span>{block.aula}</span>
+                                          </div>
+                                        )}
                                       </div>
-                                      {block.grupo && (
-                                        <div className="text-slate-600">({block.grupo})</div>
-                                      )}
-                                      {block.docente && (
-                                        <div className="text-blue-600 text-[10px] mt-1 flex items-center gap-0.5">
-                                          <span title="Docente">👤</span>
-                                          <span>{block.docente}</span>
-                                        </div>
-                                      )}
-                                      {block.aula && (
-                                        <div className="text-emerald-600 text-[10px] flex items-center gap-0.5">
-                                          <span title="Aula">📍</span>
-                                          <span>{block.aula}</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
+                                    );
+                                  }}
                                 </Draggable>
                                 );
                               })}

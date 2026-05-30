@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { toast } from 'sonner';
 import { useSchedule } from '../context/ScheduleContext';
 import { useHistory } from '../context/HistoryContext';
-import { Search, Trash2, Plus, Clock, Calendar } from 'lucide-react';
+import { Search, Trash2, Plus, Clock, Calendar, Save, CheckCircle2 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -34,11 +34,14 @@ const BlockEditor = ({ block, onClose }) => {
     docente: block.docente || '',
     aula: block.aula || '',
   });
-  const [horarios, setHorarios] = useState(block.horarios || []);
+  const [newHorario, setNewHorario] = useState({ dia: '', hora_inicio: '' });
+  const [isAddingHorario, setIsAddingHorario] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searching, setSearching] = useState(false);
   const [activeTab, setActiveTab] = useState('info');
+  const [savingTeacher, setSavingTeacher] = useState(false);
+  const [teacherSaved, setTeacherSaved] = useState(false);
   const suggestionsRef = useRef(null);
 
   useEffect(() => {
@@ -90,6 +93,32 @@ const BlockEditor = ({ block, onClose }) => {
       materia_id: subject.id,
     }));
     setShowSuggestions(false);
+  };
+
+  const handleSaveTeacher = async () => {
+    if (!formData.docente || formData.docente.trim().length < 3) {
+      toast.error('Nombre de docente inválido');
+      return;
+    }
+    setSavingTeacher(true);
+    try {
+      const response = await axios.post(`${API}/teachers`, { name: formData.docente });
+      if (response.data.added) {
+        toast.success(response.data.message);
+      } else {
+        toast.info(response.data.message);
+      }
+      setTeacherSaved(true);
+      // Actualizar el origen del docente en el bloque actual
+      if (block) {
+        block.origen_docente = "diccionario";
+      }
+    } catch (error) {
+      console.error('Error saving teacher:', error);
+      toast.error('Error al guardar el docente');
+    } finally {
+      setSavingTeacher(false);
+    }
   };
 
   const handleSave = async () => {
@@ -144,11 +173,6 @@ const BlockEditor = ({ block, onClose }) => {
         }
       }
 
-      await axios.put(
-        `${API}/schedule/${scheduleId}/block/${block.id}/horarios`,
-        horarios
-      );
-
       // Aplicar mutación local directa para no pisar cambios en memoria no persistidos.
       // El backend ya actualizó el bloque; no hacemos refetch para evitar perder ediciones
       // previas (movimientos, etc.) que solo viven en el estado local del frontend.
@@ -166,7 +190,6 @@ const BlockEditor = ({ block, onClose }) => {
             cell.bloques[blockIndex] = {
               ...cell.bloques[blockIndex],
               ...formData,
-              horarios,
               estado: 'confirmed',
               nivel_confianza: 1.0,
             };
@@ -190,9 +213,11 @@ const BlockEditor = ({ block, onClose }) => {
         description: `Editar: ${formData.materia || 'Bloque'}`,
         onUndo: () => {
           setScheduleData(previousSchedule);
+          axios.put(`${API}/schedule/${scheduleId}/state`, previousSchedule).catch(console.error);
         },
         onRedo: () => {
           setScheduleData(updatedSchedule);
+          axios.put(`${API}/schedule/${scheduleId}/state`, updatedSchedule).catch(console.error);
         },
       });
 
@@ -210,43 +235,164 @@ const BlockEditor = ({ block, onClose }) => {
     }
   };
 
-  const handleAddHorario = () => {
-    setHorarios([
-      ...horarios,
-      {
-        dia: 'L',
-        hora_inicio: '08:00',
-        hora_fin: '08:50',
-        bloques_cantidad: 1,
-      },
-    ]);
-  };
-
-  const handleRemoveHorario = (index) => {
-    setHorarios(horarios.filter((_, i) => i !== index));
-  };
-
-  const handleUpdateHorario = (index, field, value) => {
-    const newHorarios = [...horarios];
-    newHorarios[index][field] = value;
+  const getRelatedBlocks = () => {
+    if (!scheduleData) return [];
+    const related = [];
+    const currentSheet = scheduleData.hoja_actual;
+    const celdas = scheduleData.hojas_data?.[currentSheet]?.celdas || scheduleData.celdas || [];
     
-    if (field === 'hora_inicio' || field === 'hora_fin') {
-      const inicio = field === 'hora_inicio' ? value : newHorarios[index].hora_inicio;
-      const fin = field === 'hora_fin' ? value : newHorarios[index].hora_fin;
-      newHorarios[index].bloques_cantidad = calcularBloques(inicio, fin);
+    celdas.forEach(cell => {
+      (cell.bloques || []).forEach(b => {
+        const isSame = formData.materia_id 
+          ? (b.materia_id === formData.materia_id && b.grupo === formData.grupo)
+          : (b.materia === formData.materia && b.grupo === formData.grupo);
+          
+        if (isSame) {
+          related.push({
+            id: b.id,
+            dia: cell.dia,
+            hora_inicio: cell.hora_inicio,
+            hora_fin: cell.hora_fin
+          });
+        }
+      });
+    });
+    
+    // Ordenar cronológicamente (simplificado)
+    return related.sort((a, b) => a.dia.localeCompare(b.dia) || a.hora_inicio.localeCompare(b.hora_inicio));
+  };
+
+  const handleAddRelatedBlock = async () => {
+    if (!newHorario.dia || !newHorario.hora_inicio) {
+      toast.error('Selecciona día y hora');
+      return;
     }
     
-    setHorarios(newHorarios);
+    setIsAddingHorario(true);
+    const previousSchedule = JSON.parse(JSON.stringify(scheduleData));
+    
+    try {
+      const horaObj = scheduleData.estructura_horas.find(h => h.inicio === newHorario.hora_inicio);
+      
+      const response = await axios.post(`${API}/schedule/${scheduleId}/block`, {
+        sheet: scheduleData.hoja_actual,
+        dia: newHorario.dia,
+        hora_inicio: newHorario.hora_inicio,
+        hora_fin: horaObj?.fin || newHorario.hora_inicio,
+        materia: formData.materia,
+        materia_id: formData.materia_id || null,
+        grupo: formData.grupo || null,
+        docente: formData.docente || null,
+        aula: formData.aula || null,
+      });
+
+      const newBlock = response.data.block;
+      const updatedSchedule = JSON.parse(JSON.stringify(scheduleData));
+      const hoja = updatedSchedule.hoja_actual;
+      
+      const applyNewBlock = (celdasList) => {
+        if (!celdasList) return;
+        let cell = celdasList.find(
+          (c) => c.dia === newHorario.dia && c.hora_inicio === newHorario.hora_inicio
+        );
+        if (cell) {
+          cell.bloques = cell.bloques || [];
+          cell.bloques.push(newBlock);
+        } else {
+          celdasList.push({
+            dia: newHorario.dia,
+            hora_inicio: newHorario.hora_inicio,
+            hora_fin: horaObj?.fin || newHorario.hora_inicio,
+            bloques: [newBlock],
+            celda_ref: null,
+          });
+        }
+      };
+
+      applyNewBlock(updatedSchedule.celdas);
+      if (updatedSchedule.hojas_data && hoja && updatedSchedule.hojas_data[hoja]) {
+        applyNewBlock(updatedSchedule.hojas_data[hoja].celdas);
+      }
+
+      setScheduleData(updatedSchedule);
+      setNewHorario({ dia: '', hora_inicio: '' });
+      toast.success('Horario añadido');
+      
+      pushAction({
+        type: 'CREATE_BLOCK',
+        description: `Añadir horario: ${formData.materia}`,
+        payload: { blockId: newBlock.id },
+        onUndo: () => {
+          setScheduleData(previousSchedule);
+          axios.put(`${API}/schedule/${scheduleId}/state`, previousSchedule).catch(console.error);
+        },
+        onRedo: () => {
+          setScheduleData(updatedSchedule);
+          axios.put(`${API}/schedule/${scheduleId}/state`, updatedSchedule).catch(console.error);
+        },
+      });
+
+    } catch (e) {
+      console.error(e);
+      toast.error('Error al agregar el bloque');
+    } finally {
+      setIsAddingHorario(false);
+    }
   };
 
-  const calcularBloques = (inicio, fin) => {
+  const handleDeleteRelatedBlock = async (idToDelete, celdaDia, celdaHoraInicio) => {
+    const related = getRelatedBlocks();
+    if (related.length <= 1) {
+      toast.error('No puedes eliminar el único horario desde aquí. Usa el botón "Eliminar" general.');
+      return;
+    }
+    
+    const previousSchedule = JSON.parse(JSON.stringify(scheduleData));
     try {
-      const [hI, mI] = inicio.split(':').map(Number);
-      const [hF, mF] = fin.split(':').map(Number);
-      const minutos = (hF * 60 + mF) - (hI * 60 + mI);
-      return Math.floor(minutos / 50);
-    } catch {
-      return 0;
+      await axios.delete(
+        `${API}/schedule/${scheduleId}/cell/${celdaDia}/${celdaHoraInicio}/block/${idToDelete}`
+      );
+      
+      const updatedSchedule = JSON.parse(JSON.stringify(scheduleData));
+      const currentSheet = updatedSchedule.hoja_actual;
+      
+      const applyDelete = (celdasList) => {
+        if (!celdasList) return;
+        const cell = celdasList.find((c) => c.dia === celdaDia && c.hora_inicio === celdaHoraInicio);
+        if (cell) {
+          cell.bloques = cell.bloques.filter(b => b.id !== idToDelete);
+        }
+      };
+      
+      applyDelete(updatedSchedule.celdas);
+      if (updatedSchedule.hojas_data && currentSheet && updatedSchedule.hojas_data[currentSheet]) {
+        applyDelete(updatedSchedule.hojas_data[currentSheet].celdas);
+      }
+      
+      setScheduleData(updatedSchedule);
+      toast.success('Horario removido');
+      
+      pushAction({
+        type: 'DELETE_BLOCK',
+        description: `Remover horario: ${formData.materia}`,
+        payload: { blockId: idToDelete },
+        onUndo: () => {
+          setScheduleData(previousSchedule);
+          axios.put(`${API}/schedule/${scheduleId}/state`, previousSchedule).catch(console.error);
+        },
+        onRedo: () => {
+          setScheduleData(updatedSchedule);
+          axios.put(`${API}/schedule/${scheduleId}/state`, updatedSchedule).catch(console.error);
+        },
+      });
+      
+      // If we just deleted the block we are currently editing, close the editor
+      if (idToDelete === block.id) {
+        onClose();
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error('Error al remover el bloque');
     }
   };
 
@@ -303,10 +449,12 @@ const BlockEditor = ({ block, onClose }) => {
         onUndo: () => {
           // Restaurar estado anterior completo (incluye hojas_data y celdas)
           setScheduleData(previousSchedule);
+          axios.put(`${API}/schedule/${scheduleId}/state`, previousSchedule).catch(console.error);
         },
         onRedo: () => {
           // Volver a aplicar la eliminación (ya calculada)
           setScheduleData(updatedSchedule);
+          axios.put(`${API}/schedule/${scheduleId}/state`, updatedSchedule).catch(console.error);
         },
       });
 
@@ -347,7 +495,6 @@ const BlockEditor = ({ block, onClose }) => {
     );
   };
 
-  const totalBloques = horarios.reduce((sum, h) => sum + (h.bloques_cantidad || 0), 0);
 
   const DIAS_OPCIONES = [
     { value: 'L', label: 'Lunes' },
@@ -361,7 +508,16 @@ const BlockEditor = ({ block, onClose }) => {
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto" data-testid="edit-block-dialog">
+      <DialogContent 
+        className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto" 
+        data-testid="edit-block-dialog"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !showSuggestions) {
+            e.preventDefault();
+            handleSave();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
             <span>Editar Bloque</span>
@@ -381,11 +537,9 @@ const BlockEditor = ({ block, onClose }) => {
             <TabsTrigger value="horarios" data-testid="tab-horarios">
               <Clock className="w-4 h-4 mr-2" />
               Horarios
-              {horarios.length > 0 && (
-                <Badge variant="secondary" className="ml-2 text-xs" data-testid="horarios-count-badge">
-                  {horarios.length}
-                </Badge>
-              )}
+              <Badge variant="secondary" className="ml-2 text-xs" data-testid="horarios-count-badge">
+                {getRelatedBlocks().length}
+              </Badge>
             </TabsTrigger>
           </TabsList>
 
@@ -442,11 +596,48 @@ const BlockEditor = ({ block, onClose }) => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="docente">Docente</Label>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="docente">Docente</Label>
+                  {block.origen_docente === 'diccionario' || teacherSaved ? (
+                    <Badge variant="outline" className="text-[10px] h-4 bg-blue-50 text-blue-700 border-blue-200">
+                      Diccionario
+                    </Badge>
+                  ) : (
+                    block.docente && (
+                      <Badge variant="outline" className="text-[10px] h-4 bg-orange-50 text-orange-700 border-orange-200">
+                        Motor
+                      </Badge>
+                    )
+                  )}
+                </div>
+                {formData.docente && formData.docente.trim().length > 3 && block.origen_docente !== 'diccionario' && !teacherSaved && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs px-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                    onClick={handleSaveTeacher}
+                    disabled={savingTeacher}
+                  >
+                    {savingTeacher ? (
+                      <span className="animate-pulse">Guardando...</span>
+                    ) : (
+                      <>
+                        <Save className="w-3 h-3 mr-1" />
+                        Guardar al diccionario
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
               <Input
                 id="docente"
                 value={formData.docente}
-                onChange={(e) => handleChange('docente', e.target.value)}
+                onChange={(e) => {
+                  handleChange('docente', e.target.value);
+                  setTeacherSaved(false);
+                }}
                 placeholder="Nombre del docente"
                 data-testid="docente-input"
               />
@@ -473,111 +664,76 @@ const BlockEditor = ({ block, onClose }) => {
             )}
           </TabsContent>
 
-          <TabsContent value="horarios" className="space-y-3 py-4" data-testid="horarios-tab-content">
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
-              <div>
-                <p className="text-sm font-medium text-slate-900">Bloques de 50 minutos</p>
-                <p className="text-xs text-slate-500">
-                  {horarios.length} intervalo{horarios.length !== 1 ? 's' : ''} • {totalBloques} bloque{totalBloques !== 1 ? 's' : ''} de 50 min
-                </p>
-              </div>
-              <Button
-                size="sm"
-                onClick={handleAddHorario}
-                data-testid="add-horario-btn"
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Agregar
-              </Button>
-            </div>
-
-            {horarios.length === 0 ? (
-              <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-lg">
-                <Clock className="w-8 h-8 mx-auto text-slate-300 mb-2" />
-                <p className="text-sm text-slate-500">No hay horarios definidos</p>
-                <p className="text-xs text-slate-400 mt-1">
-                  Agrega intervalos para definir cuándo se imparte la clase
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {horarios.map((horario, index) => (
-                  <div
-                    key={index}
-                    className="p-3 border border-slate-200 rounded-lg space-y-2 bg-white"
-                    data-testid={`horario-item-${index}`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-600">
-                        Intervalo #{index + 1}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          {horario.bloques_cantidad || 0} × 50min
-                        </Badge>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => handleRemoveHorario(index)}
-                          data-testid={`remove-horario-${index}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="space-y-1">
-                        <Label className="text-xs">Día</Label>
-                        <Select
-                          value={horario.dia}
-                          onValueChange={(value) => handleUpdateHorario(index, 'dia', value)}
-                        >
-                          <SelectTrigger className="h-9" data-testid={`horario-dia-${index}`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {DIAS_OPCIONES.map((d) => (
-                              <SelectItem key={d.value} value={d.value}>
-                                {d.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="text-xs">Inicio</Label>
-                        <Input
-                          type="time"
-                          value={horario.hora_inicio}
-                          onChange={(e) => handleUpdateHorario(index, 'hora_inicio', e.target.value)}
-                          className="h-9"
-                          data-testid={`horario-inicio-${index}`}
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="text-xs">Fin</Label>
-                        <Input
-                          type="time"
-                          value={horario.hora_fin}
-                          onChange={(e) => handleUpdateHorario(index, 'hora_fin', e.target.value)}
-                          className="h-9"
-                          data-testid={`horario-fin-${index}`}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
+          <TabsContent value="horarios" className="space-y-4 py-4" data-testid="horarios-tab-content">
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-xs text-blue-800">
-                <strong>Nota:</strong> Cada bloque equivale a 50 minutos. Por ejemplo, 8:40–10:20 corresponde a 2 bloques (100 min).
+                <strong>Información:</strong> Todos los bloques de <strong>{formData.materia}</strong> en el grupo <strong>{formData.grupo || '(Sin grupo)'}</strong>. Si agregas o eliminas aquí, se crean o borran celdas en el horario original de forma global.
               </p>
+            </div>
+
+            <div className="space-y-3">
+              {getRelatedBlocks().map((rb, idx) => (
+                <div key={rb.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg bg-white shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <Badge variant="outline" className="w-8 justify-center shrink-0">
+                      #{idx + 1}
+                    </Badge>
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">{rb.dia}</p>
+                      <p className="text-xs text-slate-500">{rb.hora_inicio} - {rb.hora_fin}</p>
+                    </div>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => handleDeleteRelatedBlock(rb.id, rb.dia, rb.hora_inicio)}
+                    title="Eliminar este horario"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              <h4 className="text-sm font-medium text-slate-900 mb-3">Agregar nueva franja horaria</h4>
+              <div className="flex gap-2 items-end">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs">Día</Label>
+                  <Select value={newHorario.dia} onValueChange={(v) => setNewHorario(p => ({ ...p, dia: v }))}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Seleccionar..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DIAS_OPCIONES.map((d) => (
+                        <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs">Hora Inicio</Label>
+                  <Select value={newHorario.hora_inicio} onValueChange={(v) => setNewHorario(p => ({ ...p, hora_inicio: v }))}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Seleccionar..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {scheduleData?.estructura_horas?.map((h) => (
+                        <SelectItem key={h.inicio} value={h.inicio}>{h.inicio}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button 
+                  onClick={handleAddRelatedBlock}
+                  disabled={isAddingHorario || !newHorario.dia || !newHorario.hora_inicio}
+                  className="h-9"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Agregar
+                </Button>
+              </div>
             </div>
           </TabsContent>
         </Tabs>

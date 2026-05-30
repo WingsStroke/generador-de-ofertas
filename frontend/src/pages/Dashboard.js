@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
-import { Download, ArrowLeft, FileText, Undo2, Redo2, MousePointer2, List } from 'lucide-react';
+import { Download, ArrowLeft, FileText, Undo2, Redo2, MousePointer2, BookOpenCheck } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { Badge } from '../components/ui/badge';
@@ -11,18 +11,37 @@ import { useHistory } from '../context/HistoryContext';
 import ScheduleGrid from '../components/ScheduleGrid';
 import ExcelPreview from '../components/ExcelPreview';
 import GlobalSearch from '../components/GlobalSearch';
-import SubjectsSummary from '../components/SubjectsSummary';
+import DictionaryPanel from '../components/DictionaryPanel';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 const Dashboard = () => {
   const { scheduleId } = useParams();
-  const { scheduleData, setScheduleData, setSubjects, selectionMode, setSelectionMode, selectedBlockIds, exitSelectionMode } = useSchedule();
+  const { scheduleData, setScheduleData, setSubjects, selectionMode, setSelectionMode,
+    selectedBlockIds, exitSelectionMode, setExcelHtmlBySheet, excelHtmlBySheet, setLoadingHtmlBySheet } = useSchedule();
   const { canUndo, canRedo, hasUnsavedChanges, undo, redo } = useHistory();
   const [loading, setLoading] = useState(true);
   const [currentSheet, setCurrentSheet] = useState(null);
-  const [showSummary, setShowSummary] = useState(false);
+  const [showDictionary, setShowDictionary] = useState(false);
+
+  const loadSheetHtml = useCallback(async (sheetName) => {
+    if (!scheduleId || !sheetName) return;
+    try {
+      setLoadingHtmlBySheet((prev) => ({ ...prev, [sheetName]: true }));
+      const encodedSheet = encodeURIComponent(sheetName);
+      const res = await axios.get(`${API}/schedule/${scheduleId}/sheet-preview/${encodedSheet}`, {
+        responseType: 'text',
+      });
+      setExcelHtmlBySheet((prev) => ({ ...prev, [sheetName]: res.data }));
+    } catch (err) {
+      // El archivo puede no estar disponible si el servidor fue reiniciado.
+      // En ese caso, ExcelPreview cae al fallback de reconstrucción simple.
+      console.warn(`Vista HTML no disponible para hoja "${sheetName}":`, err?.response?.status);
+    } finally {
+      setLoadingHtmlBySheet((prev) => ({ ...prev, [sheetName]: false }));
+    }
+  }, [scheduleId, setExcelHtmlBySheet, setLoadingHtmlBySheet]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -33,8 +52,29 @@ const Dashboard = () => {
         ]);
 
         setScheduleData(scheduleRes.data);
-        setCurrentSheet(scheduleRes.data.hoja_actual || (scheduleRes.data.hojas && scheduleRes.data.hojas[0]));
+        const firstSheet = scheduleRes.data.hoja_actual || (scheduleRes.data.hojas && scheduleRes.data.hojas[0]);
+        setCurrentSheet(firstSheet);
         setSubjects(subjectsRes.data);
+
+        // Pre-marcar TODAS las hojas como "cargando" antes de que ExcelPreview
+        // pueda renderizar, así nunca muestra el fallback sin estilo.
+        const allSheets = scheduleRes.data.hojas || [];
+        if (allSheets.length > 0) {
+          const loadingMap = {};
+          allSheets.forEach((h) => { loadingMap[h] = true; });
+          setLoadingHtmlBySheet(loadingMap);
+        }
+
+        // Cargar HTML de la primera hoja inmediatamente
+        if (firstSheet) {
+          loadSheetHtml(firstSheet);
+        }
+        // Pre-cargar las demás hojas en segundo plano con escalonado mínimo
+        allSheets.forEach((hoja, idx) => {
+          if (hoja !== firstSheet) {
+            setTimeout(() => loadSheetHtml(hoja), 200 * idx);
+          }
+        });
       } catch (error) {
         console.error('Error fetching data:', error);
         toast.error('Error al cargar el horario');
@@ -44,13 +84,18 @@ const Dashboard = () => {
     };
 
     fetchData();
-  }, [scheduleId, setScheduleData, setSubjects]);
+  }, [scheduleId, setScheduleData, setSubjects, loadSheetHtml]);
 
   const loadSheetData = (sheetName) => {
     if (!scheduleData || !scheduleData.hojas_data) return;
     
     const sheetData = scheduleData.hojas_data[sheetName];
     if (sheetData) {
+      // Pre-marcar como cargando ANTES de setScheduleData para evitar
+      // el flash del fallback sin estilo mientras se descarga el HTML.
+      if (!excelHtmlBySheet?.[sheetName]) {
+        setLoadingHtmlBySheet((prev) => ({ ...prev, [sheetName]: true }));
+      }
       const updatedSchedule = {
         ...scheduleData,
         hoja_actual: sheetName,
@@ -61,6 +106,8 @@ const Dashboard = () => {
       };
       setScheduleData(updatedSchedule);
       setCurrentSheet(sheetName);
+      // Cargar HTML de la hoja si aún no está cargado
+      loadSheetHtml(sheetName);
     }
   };
 
@@ -98,6 +145,7 @@ const Dashboard = () => {
       toast.error('Error al exportar el horario');
     }
   };
+
 
   if (loading) {
     return (
@@ -177,14 +225,14 @@ const Dashboard = () => {
             <Redo2 className="w-4 h-4" />
           </Button>
           <Button
-            variant={showSummary ? 'default' : 'outline'}
+            variant={showDictionary ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setShowSummary((v) => !v)}
-            title="Resumen de asignaturas"
-            data-testid="summary-toggle-btn"
+            onClick={() => setShowDictionary((v) => !v)}
+            title="Panel de diccionario (docentes y asignaturas)"
+            data-testid="dictionary-panel-btn"
           >
-            <List className="w-4 h-4 mr-1" />
-            Asignaturas
+            <BookOpenCheck className="w-4 h-4 mr-1" />
+            Diccionario
           </Button>
           <Button onClick={handleExport} data-testid="export-json-btn">
             <Download className="w-4 h-4 mr-2" />
@@ -231,9 +279,9 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              {showSummary && (
-                <div className="w-72 shrink-0 flex flex-col h-full bg-white border-l border-slate-200">
-                  <SubjectsSummary onNavigate={handleNavigateFromSearch} />
+              {showDictionary && (
+                <div className="w-80 shrink-0 flex flex-col h-full bg-white border-l border-slate-200">
+                  <DictionaryPanel scheduleId={scheduleId} onNavigate={handleNavigateFromSearch} />
                 </div>
               )}
             </div>
@@ -258,9 +306,9 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {showSummary && (
-              <div className="w-72 shrink-0 flex flex-col h-full bg-white border-l border-slate-200">
-                <SubjectsSummary onNavigate={handleNavigateFromSearch} />
+            {showDictionary && (
+              <div className="w-80 shrink-0 flex flex-col h-full bg-white border-l border-slate-200">
+                <DictionaryPanel scheduleId={scheduleId} onNavigate={handleNavigateFromSearch} />
               </div>
             )}
           </>

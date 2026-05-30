@@ -158,8 +158,14 @@ const MultiBlockEditor = ({ onClose }) => {
       pushAction({
         type: 'BULK_DELETE_BLOCKS',
         description: `Eliminar ${block_ids.length} bloques`,
-        onUndo: () => setScheduleData(previousSchedule),
-        onRedo: () => setScheduleData(updatedSchedule),
+        onUndo: () => {
+          setScheduleData(previousSchedule);
+          axios.put(`${API}/schedule/${scheduleId}/state`, previousSchedule).catch(console.error);
+        },
+        onRedo: () => {
+          setScheduleData(updatedSchedule);
+          axios.put(`${API}/schedule/${scheduleId}/state`, updatedSchedule).catch(console.error);
+        },
       });
 
       exitSelectionMode();
@@ -253,9 +259,11 @@ const MultiBlockEditor = ({ onClose }) => {
         },
         onUndo: () => {
           setScheduleData(previousSchedule);
+          axios.put(`${API}/schedule/${scheduleId}/state`, previousSchedule).catch(console.error);
         },
         onRedo: () => {
           setScheduleData(updatedSchedule);
+          axios.put(`${API}/schedule/${scheduleId}/state`, updatedSchedule).catch(console.error);
         },
       });
 

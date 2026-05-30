@@ -17,6 +17,8 @@ export const ScheduleProvider = ({ children }) => {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedBlockIds, setSelectedBlockIds] = useState(new Set());
   const [excelHtmlBySheet, setExcelHtmlBySheet] = useState({});
+  const [loadingHtmlBySheet, setLoadingHtmlBySheet] = useState({});
+  const [zoom, setZoom] = useState(0.75);
 
   const toggleBlockSelection = useCallback((blockId) => {
     setSelectedBlockIds((prev) => {
@@ -75,6 +77,10 @@ export const ScheduleProvider = ({ children }) => {
     selectAllByMateriaId,
     excelHtmlBySheet,
     setExcelHtmlBySheet,
+    loadingHtmlBySheet,
+    setLoadingHtmlBySheet,
+    zoom,
+    setZoom,
   };
 
   return (

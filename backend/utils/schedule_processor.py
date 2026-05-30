@@ -12,6 +12,7 @@ from models import (
     ScheduleBlock, ScheduleCell, ProcessedSchedule, 
     ExcelCell, BlockStatus, TimeSlot
 )
+from storage.teachers_storage import teachers_storage
 
 class ScheduleProcessor:
     """Procesa archivos Excel y genera horarios estructurados"""
@@ -27,6 +28,9 @@ class ScheduleProcessor:
         El ExcelReader se cierra automáticamente al finalizar, incluso si hay errores.
         """
         reader = ExcelReader(file_path)
+        
+        # Cachear la lista de docentes una sola vez para evitar I/O por cada bloque
+        teachers_list = teachers_storage.get_all()
         
         try:
             all_sheets = reader.get_all_sheets()
@@ -45,7 +49,7 @@ class ScheduleProcessor:
                 total_blocks = 0
 
                 for cell_data in schedule_cells:
-                    processed_cell = self._process_cell(cell_data)
+                    processed_cell = self._process_cell(cell_data, teachers_list)
                     key = (processed_cell.dia, processed_cell.hora_inicio)
                     if key in merged_index:
                         existing = processed_cells[merged_index[key]]
@@ -107,10 +111,11 @@ class ScheduleProcessor:
                     # Incluyendo claves normalizadas que espera find_match
                     catalog_entries = [
                         {
-                            'nombre': entry.nombre,
+                            'materia': entry.nombre,
                             'horas': entry.horas,
                             'codigo': entry.codigo,
                             'grupo': entry.grupo,
+                            'docente': entry.docente,
                             'fila_excel': entry.fila_excel,
                             'materia_norm': _normalize(entry.nombre),
                             'grupo_norm': _norm_grupo(entry.grupo) if entry.grupo else ""
@@ -129,7 +134,7 @@ class ScheduleProcessor:
                 total_blocks = 0
 
                 for cell_data in schedule_cells:
-                    processed_cell = self._process_cell(cell_data)
+                    processed_cell = self._process_cell(cell_data, teachers_list)
 
                     if catalog_entries:
                         for blk in processed_cell.bloques:
@@ -190,7 +195,7 @@ class ScheduleProcessor:
         finally:
             reader.close()
     
-    def _process_cell(self, cell_data: Dict) -> ScheduleCell:
+    def _process_cell(self, cell_data: Dict, teachers_list: List[str] = None) -> ScheduleCell:
         """Procesa una celda individual del horario"""
         texto = cell_data["texto"]
         classes = TextCleaner.split_multiple_classes(texto)
@@ -202,7 +207,7 @@ class ScheduleProcessor:
             if multiple_groups:
                 for grupo in multiple_groups:
                     modified_text = re.sub(r'[A-Z]\d+[\s,y&/]*', f'{grupo} ', class_text, count=1)
-                    block = self._parse_class_block(modified_text, cell_data["celda_ref"], grupo)
+                    block = self._parse_class_block(modified_text, cell_data["celda_ref"], teachers_list, forced_grupo=grupo)
                     self._add_time_slot_to_block(
                         block, 
                         cell_data["dia"], 
@@ -211,7 +216,7 @@ class ScheduleProcessor:
                     )
                     bloques.append(block)
             else:
-                block = self._parse_class_block(class_text, cell_data["celda_ref"])
+                block = self._parse_class_block(class_text, cell_data["celda_ref"], teachers_list)
                 self._add_time_slot_to_block(
                     block, 
                     cell_data["dia"], 
@@ -228,9 +233,12 @@ class ScheduleProcessor:
             celda_ref=cell_data["celda_ref"]
         )
     
-    def _parse_class_block(self, text: str, celda_ref: str, forced_grupo: str = None) -> ScheduleBlock:
+    def _parse_class_block(self, text: str, celda_ref: str, teachers_list: List[str] = None, forced_grupo: str = None) -> ScheduleBlock:
         """Parsea un bloque de clase individual"""
-        entities = SemanticParser.extract_entities(text)
+        if teachers_list is None:
+            teachers_list = teachers_storage.get_all()
+            
+        entities = SemanticParser.extract_entities(text, teachers_list)
         
         grupo = forced_grupo or entities["grupo"]
         
@@ -255,9 +263,11 @@ class ScheduleProcessor:
         block = ScheduleBlock(
             id=str(uuid.uuid4()),
             materia=subject_name if subject_name else materia_text,
+            materia_original=materia_text,
             materia_id=subject_id,
             grupo=grupo,
             docente=entities["docente"],
+            origen_docente=entities["origen_docente"],
             aula=entities["aula"],
             nivel_confianza=confidence,
             estado=estado,
@@ -295,10 +305,15 @@ class ScheduleProcessor:
         """
         from utils.catalog_reader import find_match
 
-        materia_text = block.materia or ""
+        materia_original = block.materia_original or block.materia or ""
+        materia_oficial = block.materia or ""
         grupo_text = block.grupo or ""
 
-        match, single_group = find_match(catalog_entries, materia_text, grupo_text, threshold=85)
+        match, single_group = find_match(catalog_entries, materia_original, grupo_text, threshold=85)
+        
+        # Si no hubo match con el texto original, intentar con el oficial procesado
+        if not match and materia_oficial != materia_original:
+            match, single_group = find_match(catalog_entries, materia_oficial, grupo_text, threshold=85)
 
         if match:
             if not block.docente and match.get("docente"):

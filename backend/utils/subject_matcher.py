@@ -1,4 +1,4 @@
-from rapidfuzz import fuzz, process
+from rapidfuzz import fuzz, process, utils
 from typing import Dict, Optional, Tuple, List
 
 class SubjectMatcher:
@@ -33,7 +33,8 @@ class SubjectMatcher:
         result = process.extractOne(
             text_clean,
             self.subject_list,
-            scorer=fuzz.token_sort_ratio
+            scorer=fuzz.token_sort_ratio,
+            processor=utils.default_process
         )
         
         if result and result[1] >= threshold:
@@ -57,6 +58,7 @@ class SubjectMatcher:
             text.strip(),
             self.subject_list,
             scorer=fuzz.token_sort_ratio,
+            processor=utils.default_process,
             limit=limit
         )
         

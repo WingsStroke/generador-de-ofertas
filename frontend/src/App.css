@@ -110,6 +110,49 @@
   box-shadow: inset 0 0 0 2px #3B82F6;
 }
 
+/* ── Visor HTML generado por openpyxl (Opción B) ────────────────────────── */
+.xlsx-html-preview {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, Arial, sans-serif;
+  width: max-content;
+  min-width: 100%;
+}
+
+.xlsx-html-table {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+.xlsx-html-table td {
+  border: 1px solid #CBD5E1;
+  padding: 6px 8px; /* Slightly more padding for readability */
+  vertical-align: top;
+  white-space: normal;
+  word-break: break-word;
+  min-width: 100px;
+  /* El tamaño de fuente viene inline desde openpyxl — no sobreescribir */
+}
+
+.xlsx-html-table td:empty::after {
+  content: '\00a0';
+}
+
+/* Celda resaltada (la que coincide con el bloque seleccionado en el grid) */
+.xlsx-cell-highlight {
+  outline: 2px solid #3B82F6 !important;
+  outline-offset: -1px;
+  background-color: #DBEAFE !important;
+  animation: cell-pulse 1.5s ease-in-out;
+}
+
+@keyframes cell-pulse {
+  0%   { outline-color: #3B82F6; }
+  50%  { outline-color: #60A5FA; }
+  100% { outline-color: #3B82F6; }
+}
+
+/* ── Visor fallback (reconstrucción simple, cuando el xlsx no está disponible) */
 .xlsx-sheetjs-preview {
   overflow: auto;
   font-size: 0.75rem;

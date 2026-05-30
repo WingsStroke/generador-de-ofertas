@@ -24,9 +24,11 @@ class ScheduleBlock(BaseModel):
     
     id: str
     materia: Optional[str] = None
+    materia_original: Optional[str] = None
     materia_id: Optional[str] = None
     grupo: Optional[str] = None
     docente: Optional[str] = None
+    origen_docente: Optional[str] = "motor"
     aula: Optional[str] = None
     nivel_confianza: float = 0.0
     estado: BlockStatus = BlockStatus.UNKNOWN
@@ -85,6 +87,7 @@ class ProcessedSchedule(BaseModel):
     estructura_horas: List[Dict[str, str]] = []
     excel_preview: List[ExcelCell] = []
     nivel_confianza_global: float = 0.0
+    historial_cambios: List[Dict[str, Any]] = []
 
 class ProgramaAcademico(BaseModel):
     """Programa académico disponible"""
@@ -106,6 +109,7 @@ class BlockUpdate(BaseModel):
     materia_id: Optional[str] = None
     grupo: Optional[str] = None
     docente: Optional[str] = None
+    origen_docente: Optional[str] = None
     aula: Optional[str] = None
 
 class BlockMove(BaseModel):
@@ -113,9 +117,25 @@ class BlockMove(BaseModel):
     block_id: str
     from_dia: str
     from_hora_inicio: str
+    from_hora_fin: str
     to_dia: str
     to_hora_inicio: str
     to_hora_fin: str
+
+class BulkBlockUpdate(BaseModel):
+    block_ids: List[str]
+    update: BlockUpdate
+
+class BlockCreate(BaseModel):
+    sheet: str
+    dia: str
+    hora_inicio: str
+    hora_fin: str
+    materia: Optional[str] = None
+    materia_id: Optional[str] = None
+    grupo: Optional[str] = None
+    docente: Optional[str] = None
+    aula: Optional[str] = None
 
 class Subject(BaseModel):
     """Materia del diccionario académico"""

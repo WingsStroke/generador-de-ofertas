@@ -89,3 +89,8 @@ credentials.json
 *.pem
 *.key
 .credentials
+
+# Backend outputs
+backend/data/
+backend/out.log
+backend/*.db

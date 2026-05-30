@@ -37,16 +37,20 @@ def export_to_json_format(schedule: dict, diccionario: dict) -> dict:
             for bloque in celda["bloques"]:
                 raw_materia_id = bloque.get("materia_id")
                 materia_nombre = bloque.get("materia") or ""
-                grupo = bloque.get("grupo") or "N/A"
+                grupo = bloque.get("grupo")
+                if not grupo:
+                    grupo = None
                 docente = bloque.get("docente")
                 aula = bloque.get("aula")
 
                 creditos = None
+                codigo = None
 
                 # Si el bloque tiene un materia_id válido del diccionario, usarlo directamente
                 if raw_materia_id and raw_materia_id in diccionario:
                     materia_key = raw_materia_id
                     creditos = diccionario[raw_materia_id].get("creditos")
+                    codigo = diccionario[raw_materia_id].get("codigo")
                 else:
                     # Sin ID válido: agrupar por nombre normalizado para evitar duplicados
                     nombre_norm = _normalize_name(materia_nombre)
@@ -57,7 +61,7 @@ def export_to_json_format(schedule: dict, diccionario: dict) -> dict:
                         materia_key = "electiva_" + nombre_norm.replace(" ", "_")[:30] if nombre_norm else "electiva_" + bloque["id"][:8]
                         nombre_to_key[nombre_norm] = materia_key
 
-                grupo_id = f"{materia_key}_{grupo.lower().replace(' ', '_')}" if grupo and grupo != "N/A" else f"{materia_key}_na"
+                grupo_id = f"{materia_key}_{grupo.lower().replace(' ', '_')}" if grupo else f"{materia_key}_na"
                 jornada = "nocturna" if int(hora_inicio.split(":")[0]) >= 18 else "diurna"
 
                 horario_entry = {
@@ -71,6 +75,7 @@ def export_to_json_format(schedule: dict, diccionario: dict) -> dict:
                     materias_map[materia_key] = {
                         "id": materia_key,
                         "nombre": materia_nombre,
+                        "codigo": codigo,
                         "creditos": creditos,
                         "semestre": semestre_num,
                         "grupos": {},
@@ -125,6 +130,7 @@ def export_to_json_format(schedule: dict, diccionario: dict) -> dict:
             asignaturas_list.append({
                 "id": materia_data["id"],
                 "nombre": materia_data["nombre"],
+                "codigo": materia_data.get("codigo"),
                 "creditos": materia_data["creditos"],
                 "semestre": materia_data["semestre"],
                 "grupos": list(materia_data["grupos"].values()),
@@ -149,6 +155,75 @@ def export_to_json_format(schedule: dict, diccionario: dict) -> dict:
             "estructura_horas": hoja_info.get("estructura_horas", []),
         }
 
+    # ---------------------------------------------------------
+    # Detección de Conflictos (Docentes y Aulas)
+    # ---------------------------------------------------------
+    conflictos = []
+    docente_horarios = defaultdict(lambda: defaultdict(list))
+    aula_horarios = defaultdict(lambda: defaultdict(list))
+
+    def time_to_minutes(t: str) -> int:
+        try:
+            h, m = map(int, t.split(':'))
+            return h * 60 + m
+        except:
+            return 0
+
+    def overlap(start1, end1, start2, end2):
+        return max(0, min(end1, end2) - max(start1, start2)) > 0
+
+    for sem in semestres_list:
+        for asig in sem["asignaturas"]:
+            materia_nombre = asig["nombre"]
+            for grp in asig["grupos"]:
+                docente = grp.get("profesor")
+                aula = grp.get("ubicacion")
+                grupo_nom = grp.get("grupo", "N/A")
+                
+                for hor in grp.get("horarios", []):
+                    dia = hor["dia"]
+                    inicio_min = time_to_minutes(hor["inicio"])
+                    fin_min = time_to_minutes(hor["fin"])
+                    
+                    event_info = {
+                        "materia": materia_nombre,
+                        "grupo": grupo_nom,
+                        "inicio": hor["inicio"],
+                        "fin": hor["fin"]
+                    }
+                    
+                    # Chequear conflictos de docente
+                    if docente and str(docente).strip().upper() not in ["", "N/A", "NULL", "POR DEFINIR", "POR ASIGNAR", "NO ASIGNADO"]:
+                        doc_key = str(docente).strip().upper()
+                        for exist in docente_horarios[doc_key][dia]:
+                            if overlap(inicio_min, fin_min, exist["inicio_min"], exist["fin_min"]):
+                                if materia_nombre == exist["materia"] and grupo_nom == exist["grupo"]:
+                                    continue # Misma clase
+                                conflictos.append({
+                                    "tipo": "docente",
+                                    "entidad": docente,
+                                    "dia": dia,
+                                    "hora": f"{hor['inicio']} - {hor['fin']}",
+                                    "involucra": f"{materia_nombre} ({grupo_nom}) vs {exist['materia']} ({exist['grupo']})"
+                                })
+                        docente_horarios[doc_key][dia].append({**event_info, "inicio_min": inicio_min, "fin_min": fin_min})
+                        
+                    # Chequear conflictos de aula
+                    if aula and str(aula).strip().upper() not in ["", "N/A", "NULL", "VIRTUAL", "POR DEFINIR", "POR ASIGNAR", "NO ASIGNADO"]:
+                        aula_key = str(aula).strip().upper()
+                        for exist in aula_horarios[aula_key][dia]:
+                            if overlap(inicio_min, fin_min, exist["inicio_min"], exist["fin_min"]):
+                                if materia_nombre == exist["materia"] and grupo_nom == exist["grupo"]:
+                                    continue # Misma clase
+                                conflictos.append({
+                                    "tipo": "aula",
+                                    "entidad": aula,
+                                    "dia": dia,
+                                    "hora": f"{hor['inicio']} - {hor['fin']}",
+                                    "involucra": f"{materia_nombre} ({grupo_nom}) vs {exist['materia']} ({exist['grupo']})"
+                                })
+                        aula_horarios[aula_key][dia].append({**event_info, "inicio_min": inicio_min, "fin_min": fin_min})
+
     return {
         "metadata": {
             "programa": schedule.get("programa_nombre") or schedule.get("programa") or "Programa Académico",
@@ -158,6 +233,8 @@ def export_to_json_format(schedule: dict, diccionario: dict) -> dict:
             "totalGrupos": total_grupos,
             "totalSemestres": len(semestres_list),
             "version": "2.0.0",
+            "conflictos": conflictos,
+            "totalConflictos": len(conflictos),
         },
         "semestres": semestres_list,
         "_raw_preview_data": preview_data_by_sheet,  # Datos para reconstruir vista sin XLSX

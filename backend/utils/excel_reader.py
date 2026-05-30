@@ -28,23 +28,20 @@ class ExcelReader:
         """Obtiene nombres de todas las hojas"""
         return self.sheets
         
-    def detect_schedule_structure(self) -> Tuple[int, int, List[str], List[Tuple[str, str]]]:
-        """Detecta la estructura del horario: fila inicio, columna inicio, días, horas"""
+    def detect_all_schedule_structures(self) -> List[Tuple[int, int, List[str], List[Tuple[str, str, int]], int]]:
+        """
+        Detecta múltiples estructuras de horario en una hoja.
+        Retorna lista de tuplas: (start_row, start_col, dias_encontrados, horas, end_row)
+        """
         dias_semana = ["LUNES", "MARTES", "MIÉRCOLES", "MIERCOLES", "JUEVES", "VIERNES", "SÁBADO", "SABADO", "HORA"]
 
         def _matches_keyword(text: str, keyword: str) -> bool:
-            """Match keyword as a standalone word (avoids 'HORARIO' matching 'HORA')."""
             return re.search(rf'\b{re.escape(keyword)}\b', text) is not None
 
-        start_row = None
-        start_col = None
-        dias_encontrados = []
-
-        # Pick the row that contains the MOST day-keyword cells (header row likely has 5+ days)
-        best_row = None
-        best_count = 0
-        best_first_col = None
-        for row_idx, row in enumerate(self.current_sheet.iter_rows(max_row=20), 1):
+        headers = []
+        max_r = self.current_sheet.max_row
+        
+        for row_idx, row in enumerate(self.current_sheet.iter_rows(max_row=max_r), 1):
             row_count = 0
             first_match_col = None
             for col_idx, cell in enumerate(row, 1):
@@ -54,34 +51,78 @@ class ExcelReader:
                         row_count += 1
                         if first_match_col is None:
                             first_match_col = col_idx
-            if row_count > best_count:
-                best_count = row_count
-                best_row = row_idx
-                best_first_col = first_match_col
+            if row_count >= 2:
+                headers.append((row_idx, first_match_col))
+        
+        if not headers:
+            headers = [(1, 1)]
+            
+        structures = []
+        for i, (start_row, start_col) in enumerate(headers):
+            end_row = headers[i+1][0] - 1 if i + 1 < len(headers) else max_r
+            
+            dias_encontrados = []
+            for cell in self.current_sheet[start_row]:
+                if cell.value and isinstance(cell.value, str):
+                    val_upper = cell.value.strip().upper()
+                    for dia in ["LUNES", "MARTES", "MIÉRCOLES", "MIERCOLES", "JUEVES", "VIERNES", "SÁBADO", "SABADO"]:
+                        if _matches_keyword(val_upper, dia):
+                            dia_corto = self._dia_to_short(dia)
+                            if dia_corto not in dias_encontrados:
+                                dias_encontrados.append(dia_corto)
+            
+            if not dias_encontrados:
+                dias_encontrados = ["L", "M", "W", "J", "V"]
+                
+            horas = self._extract_time_slots(start_row + 1, end_row)
+            structures.append((start_row, start_col, dias_encontrados, horas, end_row))
+            
+        return structures
 
-        if best_row and best_count >= 2:
-            start_row = best_row
-            start_col = best_first_col
-
-        if not start_row:
-            start_row = 1
-            start_col = 1
-
-        for cell in self.current_sheet[start_row]:
-            if cell.value and isinstance(cell.value, str):
-                val_upper = cell.value.strip().upper()
-                for dia in ["LUNES", "MARTES", "MIÉRCOLES", "MIERCOLES", "JUEVES", "VIERNES", "SÁBADO", "SABADO"]:
-                    if _matches_keyword(val_upper, dia):
-                        dia_corto = self._dia_to_short(dia)
-                        if dia_corto not in dias_encontrados:
-                            dias_encontrados.append(dia_corto)
-
-        if not dias_encontrados:
-            dias_encontrados = ["L", "M", "W", "J", "V"]
-
-        horas = self._extract_time_slots(start_row + 1)
-
-        return start_row, start_col, dias_encontrados, horas
+    def detect_schedule_structure(self) -> Tuple[int, int, List[str], List[Tuple[str, str, int]]]:
+        """(Legacy) Devuelve una estructura combinada para compatibilidad"""
+        structures = self.detect_all_schedule_structures()
+        if not structures:
+            return 1, 1, ["L", "M", "W", "J", "V"], []
+            
+        first_start_row, first_start_col, _, _, _ = structures[0]
+        
+        all_dias = []
+        for s in structures:
+            for d in s[2]:
+                if d not in all_dias:
+                    all_dias.append(d)
+                    
+        # Para evitar que tablas de la misma hoja mezclen las horas
+        # (ej. 12:00 de tabla 2 quede después de 01:50 de tabla 1),
+        # las convertimos a una escala de minutos monótona por tabla.
+        horas_con_minutos = []
+        for s in structures:
+            last_mins = 0
+            for h in s[3]:
+                try:
+                    hh, mm = map(int, h[0].split(':'))
+                    mins = hh * 60 + mm
+                    # Si el tiempo retrocede bruscamente (ej 12:00 -> 01:00), cruzamos al PM
+                    while mins < last_mins - 240:
+                        mins += 12 * 60
+                    horas_con_minutos.append((h, mins))
+                    last_mins = mins
+                except Exception:
+                    horas_con_minutos.append((h, 0))
+                    
+        # Ordenar cronológicamente
+        horas_con_minutos.sort(key=lambda x: x[1])
+        
+        all_horas = []
+        seen_horas = set()
+        for h, _ in horas_con_minutos:
+            k = (h[0], h[1])
+            if k not in seen_horas:
+                seen_horas.add(k)
+                all_horas.append(h)
+                    
+        return first_start_row, first_start_col, all_dias, all_horas
     
     def _dia_to_short(self, dia: str) -> str:
         """Convierte nombre de día completo a abreviatura"""
@@ -97,7 +138,7 @@ class ExcelReader:
         }
         return mapping.get(dia, dia[0])
     
-    def _extract_time_slots(self, start_row: int) -> List[Tuple[str, str, int]]:
+    def _extract_time_slots(self, start_row: int, end_row: int = None) -> List[Tuple[str, str, int]]:
         """Extrae las franjas horarias detectadas con la fila Excel real donde viven.
 
         Maneja:
@@ -108,6 +149,8 @@ class ExcelReader:
         """
         time_pattern = re.compile(r'(\d{1,2})[:\s]*(\d{2})')
         max_row = self.current_sheet.max_row
+        if end_row is not None:
+            max_row = min(max_row, end_row)
 
         rows_data = []
         for r in range(start_row, max_row + 1):
@@ -185,84 +228,73 @@ class ExcelReader:
         return merged_cells
     
     def extract_schedule_cells(self, use_merged_handler: bool = True) -> List[Dict]:
-        """Extrae todas las celdas relevantes del horario usando filas reales del Excel.
-
-        Incluye forward-fill: si una fila tiene contenido en columnas de clase pero
-        NO tiene etiqueta de hora, se atribuye a la última hora conocida. Esto permite
-        recuperar materias perdidas por celdas A vacías (problema de formato XLSX).
-        
-        Args:
-            use_merged_handler: Si True, usa MergedCellHandler para manejar celdas fusionadas
-        """
-        start_row, start_col, dias, horas = self.detect_schedule_structure()
-
+        """Extrae todas las celdas relevantes del horario iterando sobre todas las sub-tablas."""
+        structures = self.detect_all_schedule_structures()
         cells_data = []
         dias_keywords = ["LUNES", "MARTES", "MIÉRCOLES", "MIERCOLES", "JUEVES", "VIERNES", "SÁBADO", "SABADO"]
 
-        if not horas:
-            return cells_data
-
-        # Inicializar MergedCellHandler si se solicita
         merged_handler = None
         if use_merged_handler:
             merged_handler = MergedCellHandler(self.current_sheet)
 
-        # Limitar columnas al rango del horario (start_col ... start_col + len(dias))
-        # para no consumir tablas auxiliares (catálogo) que vienen a la derecha
-        days_end_col = start_col + len(dias)
-
-        hora_by_row = {h[2]: (h[0], h[1]) for h in horas}
-        first_time_row = horas[0][2]
-        last_time_row = horas[-1][2]
-        scan_end = min(last_time_row + 2, self.current_sheet.max_row)
-
-        current_hora = None
-        for r in range(first_time_row, scan_end + 1):
-            if r in hora_by_row:
-                current_hora = hora_by_row[r]
-
-            if current_hora is None:
+        for start_row, start_col, dias, horas, end_row in structures:
+            if not horas:
                 continue
 
-            # Obtener valor de columna A usando merged_handler si está disponible
-            if merged_handler:
-                a_val = merged_handler.get_effective_value(r, start_col)
-            else:
-                a_val = self.current_sheet.cell(row=r, column=start_col).value
-                
-            if r not in hora_by_row and isinstance(a_val, str):
-                stripped = a_val.strip()
-                if len(stripped) > 25 and len(stripped.split()) > 4:
-                    break
+            days_end_col = start_col + len(dias)
+            hora_by_row = {h[2]: (h[0], h[1]) for h in horas}
+            first_time_row = horas[0][2]
+            last_time_row = horas[-1][2]
+            scan_end = min(last_time_row + 2, end_row)
 
-            for dia_idx, dia in enumerate(dias):
-                col = start_col + 1 + dia_idx
-                if col > days_end_col:
-                    break
-                
-                # Obtener contenido usando merged_handler si está disponible
+            current_hora = None
+            for r in range(first_time_row, scan_end + 1):
+                if r in hora_by_row:
+                    current_hora = hora_by_row[r]
+
+                if current_hora is None:
+                    continue
+
                 if merged_handler:
-                    content = merged_handler.get_effective_value(r, col)
-                    if content:
-                        content = str(content).strip()
+                    a_val = merged_handler.get_effective_value(r, start_col)
                 else:
-                    content = self.get_cell_content(r, col)
+                    a_val = self.current_sheet.cell(row=r, column=start_col).value
+                    
+                if r not in hora_by_row and isinstance(a_val, str):
+                    stripped = a_val.strip()
+                    upper_strip = stripped.upper()
+                    if upper_strip.startswith('SEMESTRE') or upper_strip.startswith('UNIVERSIDAD') or 'PROGRAMA' in upper_strip or upper_strip == 'CURSOS LIBRES':
+                        break
+                    if len(stripped) > 25 and len(stripped.split()) > 4:
+                        break
 
-                if content and content.lower() not in ['none', 'nan', '']:
-                    is_day_header = any(d in content.upper() for d in dias_keywords)
-                    if is_day_header:
-                        continue
+                for dia_idx, dia in enumerate(dias):
+                    col = start_col + 1 + dia_idx
+                    if col > days_end_col:
+                        break
+                    
+                    if merged_handler:
+                        content = merged_handler.get_effective_value(r, col)
+                        if content:
+                            content = str(content).strip()
+                    else:
+                        content = self.get_cell_content(r, col)
 
-                    cell_ref = f"{get_column_letter(col)}{r}"
-                    cells_data.append({
-                        "dia": dia,
-                        "hora_inicio": current_hora[0],
-                        "hora_fin": current_hora[1],
-                        "texto": content,
-                        "celda_ref": cell_ref,
-                        "row": r,
-                        "col": col
-                    })
+                    if content and content.lower() not in ['none', 'nan', '']:
+                        is_day_header = any(d in content.upper() for d in dias_keywords)
+                        if is_day_header:
+                            continue
+
+                        cell_ref = f"{get_column_letter(col)}{r}"
+                        cells_data.append({
+                            "dia": dia,
+                            "hora_inicio": current_hora[0],
+                            "hora_fin": current_hora[1],
+                            "texto": content,
+                            "celda_ref": cell_ref,
+                            "row": r,
+                            "col": col
+                        })
 
         return cells_data
 
@@ -340,34 +372,32 @@ class ExcelReader:
     
     def extract_inline_catalog(self, header_row: int = None) -> List[InlineCatalogEntry]:
         """
-        Extrae el catálogo inline de la hoja.
+        Extrae el catálogo inline iterando sobre todas las sub-tablas de la hoja.
         
         Args:
-            header_row: Fila de headers (si None, se detecta automáticamente)
+            header_row: (Legacy) Ignorado, se autodetectan los headers por sub-tabla.
             
         Returns:
-            Lista de entradas del catálogo
+            Lista de entradas del catálogo combinadas
         """
-        if header_row is None:
-            header_row = self.detect_header_row_adaptive()
-        
-        # Crear MergedCellHandler para manejar celdas fusionadas
+        structures = self.detect_all_schedule_structures()
         merged_handler = MergedCellHandler(self.current_sheet)
-        
         extractor = InlineCatalogExtractor(merged_handler)
-        structure = extractor.detect_catalog_structure(self.current_sheet, header_row)
         
-        if not structure:
-            return []
+        all_entries = []
+        for start_row, start_col, dias, horas, end_row in structures:
+            structure = extractor.detect_catalog_structure(self.current_sheet, start_row)
+            if structure:
+                entries = extractor.extract_catalog(
+                    self.current_sheet, 
+                    start_row, 
+                    structure,
+                    max_empty_rows=10, # Aumentado para tolerar huecos entre tablas
+                    end_row=end_row
+                )
+                all_entries.extend(entries)
         
-        entries = extractor.extract_catalog(
-            self.current_sheet, 
-            header_row, 
-            structure
-        )
-        
-        # Deduplicar entradas
-        return extractor.deduplicate_entries(entries)
+        return extractor.deduplicate_entries(all_entries)
     
     def get_merged_cell_handler(self) -> MergedCellHandler:
         """Retorna un MergedCellHandler para la hoja actual."""

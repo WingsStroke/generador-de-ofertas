@@ -116,11 +116,29 @@ const ExcelPreviewFallback = ({ excel_preview, selectedCell }) => {
 };
 
 const ExcelPreview = () => {
-  const { scheduleData, selectedCell, excelHtmlBySheet } = useSchedule();
-  const [zoom, setZoom] = useState(ZOOM_DEFAULT);
+  const { scheduleData, selectedCell, excelHtmlBySheet, loadingHtmlBySheet, zoom, setZoom } = useSchedule();
+  const containerRef = useRef(null);
 
   const currentSheet = scheduleData?.hoja_actual;
   const sheetHtml = currentSheet ? excelHtmlBySheet?.[currentSheet] : null;
+  const isLoading = currentSheet ? loadingHtmlBySheet?.[currentSheet] : false;
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    // Remover highlights previos
+    const prevHighlighted = containerRef.current.querySelectorAll('.xlsx-cell-highlight');
+    prevHighlighted.forEach(el => el.classList.remove('xlsx-cell-highlight'));
+    
+    // Agregar highlight actual
+    if (selectedCell?.celda_ref) {
+      const cellToHighlight = containerRef.current.querySelector(`td[data-ref="${selectedCell.celda_ref}"]`);
+      if (cellToHighlight) {
+        cellToHighlight.classList.add('xlsx-cell-highlight');
+        cellToHighlight.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      }
+    }
+  }, [selectedCell, sheetHtml]);
 
   const handleZoom = (delta) => {
     setZoom((prev) => {
@@ -129,9 +147,17 @@ const ExcelPreview = () => {
     });
   };
 
-  const content = sheetHtml ? (
+  const content = isLoading ? (
+    <div className="h-full flex items-center justify-center p-12">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-slate-500 text-sm">Cargando vista original...</p>
+      </div>
+    </div>
+  ) : sheetHtml ? (
     <div
-      className="xlsx-sheetjs-preview"
+      ref={containerRef}
+      className="xlsx-html-preview"
       dangerouslySetInnerHTML={{ __html: sheetHtml }}
     />
   ) : scheduleData?.excel_preview ? (

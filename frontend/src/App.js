@@ -5,6 +5,7 @@ import { HistoryProvider } from './context/HistoryContext';
 import { Toaster } from './components/ui/sonner';
 import Upload from './pages/Upload';
 import Dashboard from './pages/Dashboard';
+import Teachers from './pages/Teachers';
 import '@/App.css';
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
             <Routes>
               <Route path="/" element={<Upload />} />
               <Route path="/dashboard/:scheduleId" element={<Dashboard />} />
+              <Route path="/teachers" element={<Teachers />} />
             </Routes>
           </BrowserRouter>
           <Toaster position="top-right" />

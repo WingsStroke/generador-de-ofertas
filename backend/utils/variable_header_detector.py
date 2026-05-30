@@ -168,6 +168,8 @@ class VariableHeaderDetector:
                 catalog_cols['codigo'] = col_idx
             elif val_upper == 'GRUPO':
                 catalog_cols['grupo'] = col_idx
+            elif any(keyword in val_upper for keyword in ['DOCENTE', 'PROFESOR']):
+                catalog_cols['docente'] = col_idx
         
         # Es catálogo si tiene al menos nombre y alguna columna adicional
         if 'nombre' in catalog_cols and len(catalog_cols) >= 2:

@@ -1,4 +1,9 @@
-from fastapi import FastAPI
+from pathlib import Path
+
+backend_dir = Path(r"c:\Users\redbo\Downloads\Angel\proyectos\Generador-de-ofertas\backend")
+server_py = backend_dir / "server.py"
+
+content = """from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
@@ -58,3 +63,7 @@ async def startup_event():
 async def shutdown_db_client():
     await storage.close()
     logger.info("Storage cerrado correctamente")
+"""
+
+with open(server_py, "w", encoding="utf-8") as f:
+    f.write(content)

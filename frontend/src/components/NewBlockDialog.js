@@ -103,22 +103,39 @@ const NewBlockDialog = ({ cellSlot, onClose }) => {
         aula: formData.aula.trim() || null,
       });
 
-      const newBlockId = response.data.block.id;
+      const newBlock = response.data.block;
 
-      // Refrescar estado
-      const fresh = await axios.get(`${API}/schedule/${scheduleId}`);
-      const hoja = scheduleData.hoja_actual;
-      const sheetData = fresh.data.hojas_data?.[hoja];
-      // Forzar copia profunda para trigger de re-render de React
-      const celdasCopy = JSON.parse(JSON.stringify(sheetData?.celdas || fresh.data.celdas || []));
-      const updatedSchedule = {
-        ...fresh.data,
-        hoja_actual: hoja,
-        celdas: celdasCopy,
-        estructura_dias: [...(sheetData?.estructura_dias || fresh.data.estructura_dias || [])],
-        estructura_horas: [...(sheetData?.estructura_horas || fresh.data.estructura_horas || [])],
-        excel_preview: [...(sheetData?.excel_preview || fresh.data.excel_preview || [])],
+      // Aplicar mutación local directa para no depender del refetch, igual que BlockEditor
+      const updatedSchedule = JSON.parse(JSON.stringify(scheduleData));
+      const hoja = updatedSchedule.hoja_actual;
+      
+      const applyNewBlock = (celdasList) => {
+        if (!celdasList) return;
+        let cell = celdasList.find(
+          (c) => c.dia === cellSlot.dia && c.hora_inicio === cellSlot.hora_inicio
+        );
+        if (cell) {
+          cell.bloques = cell.bloques || [];
+          cell.bloques.push(newBlock);
+        } else {
+          celdasList.push({
+            dia: cellSlot.dia,
+            hora_inicio: cellSlot.hora_inicio,
+            hora_fin: cellSlot.hora_fin,
+            bloques: [newBlock],
+            celda_ref: null,
+          });
+        }
       };
+
+      // Actualizar celdas top-level
+      applyNewBlock(updatedSchedule.celdas);
+      
+      // Actualizar en hojas_data
+      if (updatedSchedule.hojas_data && hoja && updatedSchedule.hojas_data[hoja]) {
+        applyNewBlock(updatedSchedule.hojas_data[hoja].celdas);
+      }
+
       setScheduleData(updatedSchedule);
 
       // Registrar en historial
@@ -126,33 +143,17 @@ const NewBlockDialog = ({ cellSlot, onClose }) => {
         type: 'CREATE_BLOCK',
         description: `Crear bloque: ${formData.materia}`,
         payload: {
-          blockId: newBlockId,
+          blockId: newBlock.id,
           cellSlot,
           materia: formData.materia,
         },
         onUndo: () => {
           setScheduleData(previousSchedule);
-          // También eliminar del backend
-          axios.delete(`${API}/schedule/${scheduleId}/block/${newBlockId}`).catch(console.error);
+          axios.put(`${API}/schedule/${scheduleId}/state`, previousSchedule).catch(console.error);
         },
-        onRedo: async () => {
-          // Recrear el bloque
-          try {
-            await axios.post(`${API}/schedule/${scheduleId}/block`, {
-              sheet: scheduleData.hoja_actual,
-              dia: cellSlot.dia,
-              hora_inicio: cellSlot.hora_inicio,
-              hora_fin: cellSlot.hora_fin,
-              materia: formData.materia.trim(),
-              materia_id: formData.materia_id || null,
-              grupo: formData.grupo.trim() || null,
-              docente: formData.docente.trim() || null,
-              aula: formData.aula.trim() || null,
-            });
-            setScheduleData(updatedSchedule);
-          } catch (e) {
-            console.error('Error en redo:', e);
-          }
+        onRedo: () => {
+          setScheduleData(updatedSchedule);
+          axios.put(`${API}/schedule/${scheduleId}/state`, updatedSchedule).catch(console.error);
         },
       });
 
@@ -168,7 +169,16 @@ const NewBlockDialog = ({ cellSlot, onClose }) => {
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px]" data-testid="new-block-dialog">
+      <DialogContent 
+        className="sm:max-w-[500px]" 
+        data-testid="new-block-dialog"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !showSuggestions && formData.materia.trim()) {
+            e.preventDefault();
+            handleSave();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plus className="w-5 h-5" />

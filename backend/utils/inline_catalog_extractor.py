@@ -9,12 +9,13 @@ class InlineCatalogEntry:
     """Representa una entrada del catálogo inline."""
     
     def __init__(self, nombre: str, horas: Any = None, codigo: str = None, 
-                 grupo: str = None, fila_excel: int = None):
+                 grupo: str = None, fila_excel: int = None, docente: str = None):
         self.nombre = nombre
         self.horas = horas
         self.codigo = codigo
         self.grupo = grupo
         self.fila_excel = fila_excel
+        self.docente = docente
     
     def to_dict(self) -> dict:
         return {
@@ -22,7 +23,8 @@ class InlineCatalogEntry:
             'horas': self.horas,
             'codigo': self.codigo,
             'grupo': self.grupo,
-            'fila_excel': self.fila_excel
+            'fila_excel': self.fila_excel,
+            'docente': self.docente
         }
     
     def __repr__(self):
@@ -43,6 +45,7 @@ class InlineCatalogExtractor:
             'horas_col': 9,
             'codigo_col': 10,
             'grupo_col': 11,
+            'docente_col': 12,
         },
         {
             'name': 'minimal_catalog',
@@ -50,6 +53,7 @@ class InlineCatalogExtractor:
             'horas_col': 9,
             'codigo_col': None,
             'grupo_col': None,
+            'docente_col': None,
         }
     ]
     
@@ -72,6 +76,7 @@ class InlineCatalogExtractor:
             'horas_col': None,
             'codigo_col': None,
             'grupo_col': None,
+            'docente_col': None,
             'pattern_name': None
         }
         
@@ -83,22 +88,26 @@ class InlineCatalogExtractor:
             
             val_upper = str(cell.value).upper().strip()
             
-            # Detectar columna de nombre
-            if any(keyword in val_upper for keyword in ['ASIGNATURA', 'NOMBRE ASIGNATURA', 'MATERIA', 'NOMBRE']):
-                structure['nombre_col'] = col_idx
-                structure['pattern_name'] = 'detected'
+            # 1. Detectar columna de docente PRIMERO (evita conflicto con 'NOMBRE')
+            if any(keyword in val_upper for keyword in ['DOCENTE', 'PROFESOR']):
+                structure['docente_col'] = col_idx
             
-            # Detectar columna de horas
+            # 2. Detectar columna de codigo PRIMERO (evita conflicto con 'ASIGNATURA')
+            elif any(keyword in val_upper for keyword in ['CODIGO', 'CÓDIGO']):
+                structure['codigo_col'] = col_idx
+            
+            # 3. Detectar columna de horas
             elif val_upper in ['HORAS', 'HORAS SEMANALES'] or 'HORA' in val_upper:
                 structure['horas_col'] = col_idx
             
-            # Detectar columna de código
-            elif any(keyword in val_upper for keyword in ['CODIGO', 'CÓDIGO', 'CODIGO DE ASIGNATURA']):
-                structure['codigo_col'] = col_idx
-            
-            # Detectar columna de grupo
+            # 4. Detectar columna de grupo
             elif val_upper == 'GRUPO' or val_upper == 'GRUPOS':
                 structure['grupo_col'] = col_idx
+            
+            # 5. Detectar columna de nombre
+            elif any(keyword in val_upper for keyword in ['ASIGNATURA', 'MATERIA', 'NOMBRE']):
+                structure['nombre_col'] = col_idx
+                structure['pattern_name'] = 'detected'
         
         # Validar: debe tener al menos columna de nombre
         if structure['nombre_col']:
@@ -108,7 +117,8 @@ class InlineCatalogExtractor:
     
     def extract_catalog(self, sheet, header_row: int, 
                         structure: dict = None,
-                        max_empty_rows: int = 3) -> List[InlineCatalogEntry]:
+                        max_empty_rows: int = 3,
+                        end_row: int = None) -> List[InlineCatalogEntry]:
         """
         Extrae entradas del catálogo inline.
         
@@ -117,6 +127,7 @@ class InlineCatalogExtractor:
             header_row: Fila de headers
             structure: Estructura del catálogo (si None, se detecta automáticamente)
             max_empty_rows: Máximo de filas vacías antes de detener
+            end_row: Fila máxima a leer (útil para multi-tabla)
             
         Returns:
             Lista de InlineCatalogEntry
@@ -135,8 +146,10 @@ class InlineCatalogExtractor:
         horas_col = structure.get('horas_col')
         codigo_col = structure.get('codigo_col')
         grupo_col = structure.get('grupo_col')
+        docente_col = structure.get('docente_col')
         
-        while row <= sheet.max_row and empty_count < max_empty_rows:
+        max_r = end_row if end_row is not None else sheet.max_row
+        while row <= max_r and empty_count < max_empty_rows:
             # Obtener nombre usando merged_handler si está disponible
             if self.merged_handler:
                 nombre = self.merged_handler.get_effective_value(row, nombre_col)
@@ -146,10 +159,18 @@ class InlineCatalogExtractor:
             # Limpiar y validar nombre
             if nombre:
                 nombre_str = str(nombre).strip()
+                
+                # Reemplazar saltos de línea y múltiples espacios por un solo espacio
+                nombre_str = " ".join(nombre_str.split())
+                
+                nombre_upper = nombre_str.upper()
+                
                 # Ignorar filas que se ven como headers o están vacías
-                if (nombre_str and 
-                    len(nombre_str) > 2 and 
-                    'ASIGNATURA' not in nombre_str.upper()):
+                es_header = any(h in nombre_upper for h in [
+                    'ASIGNATURA', 'SEMESTRE', 'ELECTIVA', 'CURSO LIBRE', 'CURSOS LIBRES'
+                ])
+                
+                if nombre_str and len(nombre_str) > 2 and not es_header:
                     
                     # Extraer otras columnas
                     horas = None
@@ -174,12 +195,19 @@ class InlineCatalogExtractor:
                         if grupo_cell:
                             grupo = str(grupo_cell).strip()
                     
+                    docente = None
+                    if docente_col:
+                        docente_cell = sheet.cell(row=row, column=docente_col).value
+                        if docente_cell:
+                            docente = str(docente_cell).strip()
+                    
                     entry = InlineCatalogEntry(
                         nombre=nombre_str,
                         horas=horas,
                         codigo=codigo,
                         grupo=grupo,
-                        fila_excel=row
+                        fila_excel=row,
+                        docente=docente
                     )
                     entries.append(entry)
                     empty_count = 0
@@ -246,15 +274,14 @@ class InlineCatalogExtractor:
     
     def deduplicate_entries(self, entries: List[InlineCatalogEntry]) -> List[InlineCatalogEntry]:
         """
-        Elimina duplicados del catálogo (materias repetidas en filas consecutivas).
-        
-        Algunos archivos repiten la misma materia en varias filas.
+        Elimina duplicados del catálogo, pero respeta grupos diferentes para la misma materia.
         """
         seen = set()
         unique = []
         
         for entry in entries:
-            key = entry.nombre.upper()
+            grp = entry.grupo.upper() if entry.grupo else ""
+            key = (entry.nombre.upper(), grp)
             if key not in seen:
                 seen.add(key)
                 unique.append(entry)
