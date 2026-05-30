@@ -94,3 +94,16 @@ credentials.json
 backend/data/
 backend/out.log
 backend/*.db
+
+# Otros directorios locales no deseados en GitHub
+/data/
+/deploy/
+/memory/
+/ofertas/
+/scratch/
+/test_reports/
+/tests/
+/trace_output.txt
+/test_result.md
+/design_guidelines.json
+/DEPLOY.md
