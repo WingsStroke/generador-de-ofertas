@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
-import { Upload as UploadIcon, FileSpreadsheet, CheckCircle, GraduationCap, FileJson, AlertCircle, ChevronDown, ChevronUp, Users } from 'lucide-react';
+import { Upload as UploadIcon, FileSpreadsheet, FileText, CheckCircle, GraduationCap, FileJson, AlertCircle, ChevronDown, ChevronUp, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -90,10 +90,10 @@ const Upload = () => {
     setIsDragOverXlsx(false);
     const dropped = e.dataTransfer.files[0];
     if (!dropped) return;
-    if (dropped.name.endsWith('.xlsx') || dropped.name.endsWith('.xls')) {
+    if (dropped.name.match(/\.(xlsx|xls|pdf)$/i)) {
       setFile(dropped);
     } else {
-      toast.error('Solo se aceptan archivos Excel (.xlsx, .xls)');
+      toast.error('Solo se aceptan archivos Excel (.xlsx, .xls) o PDF (.pdf)');
     }
   };
 
@@ -159,8 +159,12 @@ const Upload = () => {
 
     setUploading(true);
 
-    const [htmlMap] = await Promise.all([readXlsxAsHtml(file)]);
-    setExcelHtmlBySheet(htmlMap);
+    // Solo intentar leer el XLSX localmente si NO es un PDF
+    // (los PDFs los convierte el backend directamente)
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      const htmlMap = await readXlsxAsHtml(file);
+      setExcelHtmlBySheet(htmlMap);
+    }
 
     const formData = new FormData();
     formData.append('file', file);
@@ -212,7 +216,7 @@ const Upload = () => {
                 }`}
             >
               <FileSpreadsheet className="w-4 h-4" />
-              Desde Excel (.xlsx)
+              Desde Excel o PDF
             </button>
             <button
               onClick={() => { setMode('json'); setFile(null); setJsonFile(null); setJsonErrors([]); }}
@@ -260,18 +264,20 @@ const Upload = () => {
                   >
                     <div className="flex flex-col items-center justify-center pt-5 pb-6 pointer-events-none">
                       <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-4 ${isDragOverXlsx ? 'bg-blue-200' : 'bg-blue-100'}`}>
-                        <FileSpreadsheet className="w-7 h-7 text-blue-600" />
+                        {file?.name?.toLowerCase().endsWith('.pdf')
+                          ? <FileText className="w-7 h-7 text-blue-600" />
+                          : <FileSpreadsheet className="w-7 h-7 text-blue-600" />}
                       </div>
                       <p className="mb-2 text-base font-medium text-slate-700">
                         {isDragOverXlsx ? <span className="text-blue-600">Suelta el archivo aqui</span> : <><span className="text-blue-600">Haz clic para seleccionar</span> o arrastra un archivo</>}
                       </p>
-                      <p className="text-sm text-slate-500">Archivos Excel (.xlsx, .xls)</p>
+                      <p className="text-sm text-slate-500">Excel (.xlsx, .xls) o PDF (.pdf)</p>
                     </div>
                     <input
                       id="file-upload"
                       type="file"
                       className="hidden"
-                      accept=".xlsx,.xls"
+                      accept=".xlsx,.xls,.pdf,application/pdf"
                       onChange={handleFileChange}
                       data-testid="file-input"
                     />

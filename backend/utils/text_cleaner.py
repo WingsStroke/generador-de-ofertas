@@ -16,45 +16,70 @@ class TextCleaner:
     
     @staticmethod
     def split_multiple_classes(text: str) -> List[str]:
-        """Divide una celda que contiene múltiples clases"""
+        """Divide una celda que contiene múltiples clases.
+
+        Mejoras respecto a la versión anterior:
+        - Fusiona líneas que terminan con guión (word-wrap del PDF).
+        - Si la celda sólo tiene un grupo en todas sus líneas, la trata
+          como una única clase (evita partir incorrectamente celdas largas).
+        """
         if not text:
             return []
-        
-        text = text.strip()
-        text = re.sub(r'[ \t\f\v]+', ' ', text) # normalize spaces but KEEP \n if it exists
-        
-        # Capa 2: Propagación de materia por newline
-        # Ejemplo: "Materia \n Grupo1 Docente \n Grupo2 Docente"
-        if '\n' in text:
-            lines = [line.strip() for line in text.split('\n') if line.strip()]
-            if len(lines) > 1:
-                group_pattern = re.compile(r'\b[A-Z]{1,2}\d+\b')
-                
-                first_has_group = bool(group_pattern.search(lines[0]))
-                all_others_have_group = all(group_pattern.search(line) for line in lines[1:])
-                
-                if not first_has_group and all_others_have_group:
-                    subject = lines[0]
-                    resolved_classes = []
-                    for line in lines[1:]:
-                        resolved_classes.append(f"{subject} - {line}")
-                    return resolved_classes
-                
-                # Merge lines that are just extra info (e.g. classrooms in parentheses)
-                merged_lines = []
-                for line in lines:
-                    if not merged_lines:
-                        merged_lines.append(line)
-                    else:
-                        # Si la línea actual no tiene grupo, o empieza por '(', suele ser info del bloque anterior
-                        if not group_pattern.search(line) or line.startswith('('):
-                            merged_lines[-1] += f" {line}"
-                        else:
-                            merged_lines.append(line)
-                            
-                text = ' | '.join(merged_lines)
 
-        # Convert remaining \n to | si existen
+        text = text.strip()
+        text = re.sub(r'[ \t\f\v]+', ' ', text)  # normaliza espacios, conserva \n
+
+        # ── Procesamiento de líneas con salto de párrafo ──────────────────────
+        if '\n' in text:
+            # Paso 1: fusionar líneas que terminan con guión (word-wrap del PDF)
+            lines_raw = text.split('\n')
+            lines: List[str] = []
+            i = 0
+            while i < len(lines_raw):
+                line = lines_raw[i].strip()
+                while line.endswith(('-', '\u2013', '\u2014')) and i + 1 < len(lines_raw):
+                    next_line = lines_raw[i + 1].strip()
+                    line = re.sub(r'\s*[-\u2013\u2014]\s*$', ' - ', line) + next_line
+                    i += 1
+                if line:
+                    lines.append(line)
+                i += 1
+
+            if not lines:
+                return [text]
+
+            if len(lines) == 1:
+                return [re.sub(r'\s+', ' ', lines[0])]
+
+            group_pattern = re.compile(r'\b[A-Z]{1,2}\d+\b')
+
+            # Contar cuántas líneas tienen grupo
+            total_groups = sum(1 for line in lines if group_pattern.search(line))
+
+            # Si hay ≤1 grupo en total, es una sola clase con texto largo → unir
+            if total_groups <= 1:
+                return [re.sub(r'\s+', ' ', ' '.join(lines))]
+
+            first_has_group = bool(group_pattern.search(lines[0]))
+            all_others_have_group = all(group_pattern.search(line) for line in lines[1:])
+
+            if not first_has_group and all_others_have_group:
+                subject = lines[0]
+                return [f"{subject} - {line}" for line in lines[1:]]
+
+            # Fusionar líneas sin grupo con la anterior (info extra: aula, etc.)
+            merged_lines: List[str] = []
+            for line in lines:
+                if not merged_lines:
+                    merged_lines.append(line)
+                elif not group_pattern.search(line) or line.startswith('('):
+                    merged_lines[-1] += f" {line}"
+                else:
+                    merged_lines.append(line)
+
+            text = ' | '.join(merged_lines)
+
+        # Convertir \n restantes a |
         text = text.replace('\n', ' | ')
         
         # Separadores tradicionales

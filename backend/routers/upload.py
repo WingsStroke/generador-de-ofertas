@@ -3,6 +3,7 @@ from models import UploadResponse
 from state import programas_dict, processors, limiter
 from storage import storage
 from routers.schedules import register_excel_file
+from utils.pdf_converter import pdf_to_xlsx, is_pdf_file
 import tempfile
 import shutil
 import os
@@ -19,10 +20,13 @@ EXCEL_SIGNATURES = {
     b'\xD0\xCF\x11\xE0': 'xls',   # OLE Compound Document (XLS antiguo)
 }
 
+PDF_SIGNATURE = b'%PDF'
+
 ALLOWED_MIME_TYPES = {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',  # .xlsx
     'application/vnd.ms-excel',  # .xls
     'application/octet-stream',  # Algunos navegadores envían esto
+    'application/pdf',           # PDF
 }
 
 async def validate_excel_file(file: UploadFile) -> tuple[bool, str]:
@@ -83,62 +87,109 @@ async def validate_excel_file(file: UploadFile) -> tuple[bool, str]:
 @router.post("/upload", response_model=UploadResponse)
 @limiter.limit("5/minute")
 async def upload_schedule(request: Request, file: UploadFile = File(...), program_id: str = "ingenieria_de_sistemas"):
-    if not file.filename.endswith(('.xlsx', '.xls')):
-        raise HTTPException(status_code=400, detail="Solo se permiten archivos Excel (.xlsx, .xls)")
-    
-    is_valid, error_msg = await validate_excel_file(file)
-    if not is_valid:
-        raise HTTPException(status_code=400, detail=f"Archivo inválido: {error_msg}")
-    
+    allowed_extensions = ('.xlsx', '.xls', '.pdf')
+    if not file.filename.lower().endswith(allowed_extensions):
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se permiten archivos Excel (.xlsx, .xls) o PDF (.pdf)"
+        )
+
     if program_id not in programas_dict:
         raise HTTPException(status_code=400, detail=f"Programa '{program_id}' no encontrado")
-    
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
-        shutil.copyfileobj(file.file, tmp_file)
-        tmp_path = tmp_file.name
-    
-    tmp_path_for_cleanup = tmp_path
-    persistent_excel_path = None
-    
+
+    # ── Leer los primeros bytes para detectar el tipo real del archivo ──
+    header_bytes = await file.read(8)
+    await file.seek(0)
+    file_is_pdf = is_pdf_file(file.filename, header_bytes)
+
+    if file_is_pdf:
+        # ── Ruta PDF: guardar temporal → convertir a XLSX ──────────────────
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_pdf:
+            shutil.copyfileobj(file.file, tmp_pdf)
+            tmp_pdf_path = tmp_pdf.name
+
+        tmp_path_for_cleanup = tmp_pdf_path
+        converted_xlsx_path = None
+        persistent_excel_path = None
+
+        try:
+            logging.info(f"Convirtiendo PDF a XLSX: {file.filename}")
+            converted_xlsx_path = pdf_to_xlsx(tmp_pdf_path)
+            tmp_path = converted_xlsx_path  # a partir de aquí se procesa igual
+
+        except (ValueError, RuntimeError) as conv_err:
+            logging.error(f"Error convirtiendo PDF '{file.filename}': {conv_err}")
+            raise HTTPException(
+                status_code=422,
+                detail=f"No se pudo convertir el PDF: {conv_err}"
+            )
+        except ImportError as imp_err:
+            logging.error(f"Dependencia faltante para conversión PDF: {imp_err}")
+            raise HTTPException(
+                status_code=500,
+                detail=str(imp_err)
+            )
+
+    else:
+        # ── Ruta Excel: validación + guardado temporal ──────────────────────
+        is_valid, error_msg = await validate_excel_file(file)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=f"Archivo inválido: {error_msg}")
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+            shutil.copyfileobj(file.file, tmp_file)
+            tmp_path = tmp_file.name
+
+        tmp_path_for_cleanup = tmp_path
+        converted_xlsx_path = None
+        persistent_excel_path = None
+
+    # ── Procesamiento común (PDF o Excel, ambos llegan como .xlsx) ─────────
     try:
         processor = processors[program_id]
         programa_nombre = programas_dict[program_id]["nombre"]
         schedule = processor.process_file(tmp_path, file.filename, program_id, programa_nombre)
-        
+
         schedule_dict = schedule.model_dump()
         schedule_dict['fecha_procesamiento'] = schedule_dict['fecha_procesamiento'].isoformat()
         schedule_dict['_v'] = 0
-        
+
         await storage.create(schedule_dict)
 
         # Guardar copia persistente del Excel para el visor HTML
-        # (el tmp original se borrará en finally, necesitamos otro archivo)
         persistent_excel_path = tmp_path + f"_preview_{schedule.id}.xlsx"
         shutil.copy2(tmp_path, persistent_excel_path)
         register_excel_file(schedule.id, persistent_excel_path)
-        
+
         return UploadResponse(
             schedule_id=schedule.id,
             message="Archivo procesado exitosamente",
             confianza_global=schedule.nivel_confianza_global
         )
-    
+
     except HTTPException:
         raise
-    
+
     except Exception as e:
         logging.error(f"Error procesando archivo: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=500, 
+            status_code=500,
             detail="Error interno al procesar el archivo. Por favor intente nuevamente o contacte soporte."
         )
-    
+
     finally:
+        # Limpiar el archivo fuente temporal (PDF o XLSX original)
         if tmp_path_for_cleanup and os.path.exists(tmp_path_for_cleanup):
             try:
                 os.unlink(tmp_path_for_cleanup)
             except OSError as e:
                 logging.warning(f"No se pudo eliminar archivo temporal {tmp_path_for_cleanup}: {e}")
+        # Limpiar el XLSX convertido (solo existe en ruta PDF)
+        if converted_xlsx_path and converted_xlsx_path != tmp_path_for_cleanup and os.path.exists(converted_xlsx_path):
+            try:
+                os.unlink(converted_xlsx_path)
+            except OSError as e:
+                logging.warning(f"No se pudo eliminar XLSX convertido {converted_xlsx_path}: {e}")
 
 
 @router.post("/import-json")

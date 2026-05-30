@@ -122,6 +122,10 @@ def find_match(entries: List[Dict], materia: Optional[str], grupo: Optional[str]
       - best_match: entry con mayor score si materia ≥ threshold y grupo coincide.
       - single_group_match: si el bloque no tiene grupo y la materia tiene un único
         grupo en el catálogo, esa entry (para asignación automática).
+
+    Mejora: descarta candidatos sin grupo NI docente cuando existan candidatos
+    con datos completos. Esto evita falsos positivos en filas del catálogo que
+    están vacías o corruptas (problema detectado en PDFs con multi-tabla).
     """
     if not materia:
         return None, None
@@ -138,6 +142,14 @@ def find_match(entries: List[Dict], materia: Optional[str], grupo: Optional[str]
 
     if not candidates:
         return None, None
+
+    # Preferir candidatos que tengan grupo o docente registrado
+    candidates_with_data = [
+        (score, e) for score, e in candidates
+        if e.get("grupo_norm") or e.get("docente")
+    ]
+    if candidates_with_data:
+        candidates = candidates_with_data
 
     # Ordenar por score descendente
     candidates.sort(key=lambda x: x[0], reverse=True)
