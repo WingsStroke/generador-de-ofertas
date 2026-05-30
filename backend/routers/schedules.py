@@ -336,6 +336,76 @@ async def export_schedule(request: Request, schedule_id: str):
     
     return JSONResponse(content=exported)
 
+
+@router.post("/schedule/{schedule_id}/publish")
+@limiter.limit("5/minute")
+async def publish_schedule(request: Request, schedule_id: str):
+    """
+    Exporta el horario y lo publica automáticamente en Cloudflare R2.
+
+    Body JSON requerido:
+        semester (str): Identificador del semestre, ej. "2026-1".
+        filename (str): Nombre base del archivo, ej. "ingenieria_de_sistemas".
+                        No incluir extensión .json; se agrega automáticamente.
+
+    Respuesta exitosa:
+        success  (bool): true
+        url      (str):  URL pública del archivo en R2.
+        semester (str):  Semestre utilizado.
+        filename (str):  Nombre de archivo sanitizado con extensión.
+
+    Rate limit: 5 publicaciones por minuto por IP.
+    """
+    from utils.r2_uploader import upload_schedule_json, is_r2_configured
+
+    # Verificar configuración de R2 antes de procesar nada
+    if not is_r2_configured():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Cloudflare R2 no está configurado. "
+                "Añade las variables R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, "
+                "R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME y R2_PUBLIC_URL "
+                "en el archivo backend/.env."
+            ),
+        )
+
+    body = await request.json()
+    semester = (body.get("semester") or "").strip()
+    filename = (body.get("filename") or "").strip()
+
+    if not semester:
+        raise HTTPException(status_code=400, detail="El campo 'semester' es requerido (ej. '2026-1').")
+    if not filename:
+        raise HTTPException(status_code=400, detail="El campo 'filename' es requerido (ej. 'ingenieria_de_sistemas').")
+
+    # MONGODB-READY: Reemplazado por storage.get()
+    schedule = await storage.get(schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Horario no encontrado")
+
+    program_id = schedule.get("programa_id", "ingenieria_de_sistemas")
+    subject_dict = programas_dict.get(program_id, {}).get("diccionario", {})
+    exported = export_to_json_format(schedule, subject_dict)
+
+    try:
+        public_url = await asyncio.to_thread(
+            upload_schedule_json, semester, filename, exported
+        )
+    except Exception as e:
+        logging.error(f"Error al publicar en R2 (schedule={schedule_id}): {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al publicar en Cloudflare R2: {str(e)}",
+        )
+
+    return JSONResponse(content={
+        "success": True,
+        "url": public_url,
+        "semester": semester,
+        "filename": filename if filename.endswith(".json") else f"{filename}.json",
+    })
+
 @router.put("/schedule/{schedule_id}/block/{block_id}/horarios")
 async def update_block_horarios(
     schedule_id: str,

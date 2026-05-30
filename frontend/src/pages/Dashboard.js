@@ -1,10 +1,18 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
-import { Download, ArrowLeft, FileText, Undo2, Redo2, MousePointer2, BookOpenCheck } from 'lucide-react';
+import { Download, ArrowLeft, FileText, Undo2, Redo2, MousePointer2, BookOpenCheck, Upload, ExternalLink, Copy, Check } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { Badge } from '../components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '../components/ui/dialog';
 import { toast } from 'sonner';
 import { useSchedule } from '../context/ScheduleContext';
 import { useHistory } from '../context/HistoryContext';
@@ -24,6 +32,20 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [currentSheet, setCurrentSheet] = useState(null);
   const [showDictionary, setShowDictionary] = useState(false);
+
+  // Estado del título editable
+  const [editableTitle, setEditableTitle] = useState('');
+  const [isTitleFocused, setIsTitleFocused] = useState(false);
+  const titleInputRef = useRef(null);
+
+  // Estado del diálogo de publicación en R2
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [publishSemester, setPublishSemester] = useState('');
+  const [publishFilename, setPublishFilename] = useState('');
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishedUrl, setPublishedUrl] = useState(null);
+  const [urlCopied, setUrlCopied] = useState(false);
+
 
   const loadSheetHtml = useCallback(async (sheetName) => {
     if (!scheduleId || !sheetName) return;
@@ -56,6 +78,12 @@ const Dashboard = () => {
         setCurrentSheet(firstSheet);
         setSubjects(subjectsRes.data);
 
+        // Inicializar título editable con el nombre del archivo
+        const initialTitle = scheduleRes.data.nombre_archivo || 'Horario';
+        setEditableTitle(initialTitle);
+        // Pre-llenar el campo de nombre en el diálogo de publicación
+        setPublishFilename(initialTitle);
+
         // Pre-marcar TODAS las hojas como "cargando" antes de que ExcelPreview
         // pueda renderizar, así nunca muestra el fallback sin estilo.
         const allSheets = scheduleRes.data.hojas || [];
@@ -84,6 +112,7 @@ const Dashboard = () => {
     };
 
     fetchData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scheduleId, setScheduleData, setSubjects, loadSheetHtml]);
 
   const loadSheetData = (sheetName) => {
@@ -126,6 +155,11 @@ const Dashboard = () => {
   };
 
   const handleExport = async () => {
+    // Usa el título editable como nombre de archivo
+    const safeName = (editableTitle || scheduleData?.nombre_archivo || `horario_${scheduleId}`)
+      .replace(/[^a-zA-Z0-9_\-\. ]/g, '')
+      .replace(/\s+/g, '_');
+    const filename = safeName.endsWith('.json') ? safeName : `${safeName}.json`;
     try {
       const response = await axios.post(`${API}/schedule/${scheduleId}/export`);
       const blob = new Blob([JSON.stringify(response.data, null, 2)], {
@@ -134,17 +168,60 @@ const Dashboard = () => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `horario_${scheduleId}.json`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-      toast.success('Horario exportado exitosamente');
+      toast.success(`Descargado como "${filename}"`);
     } catch (error) {
       console.error('Error exporting schedule:', error);
       toast.error('Error al exportar el horario');
     }
   };
+
+  const handleOpenPublishDialog = () => {
+    // Pre-llenar el nombre con el título editable actual
+    setPublishFilename(editableTitle || scheduleData?.nombre_archivo || '');
+    setPublishedUrl(null);
+    setUrlCopied(false);
+    setPublishDialogOpen(true);
+  };
+
+  const handlePublish = async () => {
+    if (!publishSemester.trim()) {
+      toast.error('Ingresa el semestre antes de publicar');
+      return;
+    }
+    if (!publishFilename.trim()) {
+      toast.error('Ingresa el nombre del archivo antes de publicar');
+      return;
+    }
+    setIsPublishing(true);
+    try {
+      const response = await axios.post(`${API}/schedule/${scheduleId}/publish`, {
+        semester: publishSemester.trim(),
+        filename: publishFilename.trim(),
+      });
+      setPublishedUrl(response.data.url);
+      toast.success('¡Oferta publicada exitosamente en Cloudflare R2!');
+    } catch (error) {
+      const detail = error?.response?.data?.detail || 'Error desconocido';
+      console.error('Error publicando en R2:', error);
+      toast.error(`Error al publicar: ${detail}`);
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const handleCopyUrl = () => {
+    if (publishedUrl) {
+      navigator.clipboard.writeText(publishedUrl);
+      setUrlCopied(true);
+      setTimeout(() => setUrlCopied(false), 2000);
+    }
+  };
+
 
 
   if (loading) {
@@ -160,6 +237,126 @@ const Dashboard = () => {
 
   return (
     <div className="h-screen flex flex-col">
+      {/* Diálogo de publicación en Cloudflare R2 */}
+      <Dialog open={publishDialogOpen} onOpenChange={(open) => {
+        if (!isPublishing) {
+          setPublishDialogOpen(open);
+          if (!open) setPublishedUrl(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Publicar en Cloudflare R2</DialogTitle>
+            <DialogDescription>
+              El archivo JSON se publicará en el bucket de R2 y estará disponible inmediatamente
+              en el proyecto principal de horarios.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!publishedUrl ? (
+            <div className="flex flex-col gap-4 py-2">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700" htmlFor="publish-semester">
+                  Semestre
+                </label>
+                <input
+                  id="publish-semester"
+                  type="text"
+                  placeholder="ej. 2026-1"
+                  value={publishSemester}
+                  onChange={(e) => setPublishSemester(e.target.value)}
+                  disabled={isPublishing}
+                  className="border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700" htmlFor="publish-filename">
+                  Nombre del archivo
+                </label>
+                <input
+                  id="publish-filename"
+                  type="text"
+                  placeholder="ej. ingenieria_de_sistemas"
+                  value={publishFilename}
+                  onChange={(e) => setPublishFilename(e.target.value)}
+                  disabled={isPublishing}
+                  className="border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                />
+                <p className="text-xs text-slate-500">
+                  Se guardará como: <code className="bg-slate-100 px-1 rounded">{publishSemester || 'semestre'}/{publishFilename || 'archivo'}.json</code>
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3 py-2">
+              <div className="flex items-center gap-2 text-green-600 font-medium">
+                <Check className="w-5 h-5" />
+                Publicado exitosamente
+              </div>
+              <div className="flex items-center gap-2 border border-slate-200 rounded-md p-2 bg-slate-50">
+                <span className="text-xs text-slate-600 flex-1 truncate font-mono">{publishedUrl}</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleCopyUrl}
+                  title="Copiar URL"
+                  data-testid="copy-r2-url-btn"
+                >
+                  {urlCopied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                </Button>
+                <a href={publishedUrl} target="_blank" rel="noopener noreferrer">
+                  <Button size="sm" variant="ghost" title="Abrir en nueva pestaña">
+                    <ExternalLink className="w-4 h-4" />
+                  </Button>
+                </a>
+              </div>
+              <p className="text-xs text-slate-500">
+                El archivo ya está disponible en el proyecto principal. Puedes republicar
+                con otro nombre o cerrar este diálogo.
+              </p>
+            </div>
+          )}
+
+          <DialogFooter>
+            {!publishedUrl ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setPublishDialogOpen(false)}
+                  disabled={isPublishing}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handlePublish}
+                  disabled={isPublishing || !publishSemester.trim() || !publishFilename.trim()}
+                  data-testid="confirm-publish-btn"
+                >
+                  {isPublishing ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                      Publicando...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Publicar en R2
+                    </>
+                  )}
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => {
+                setPublishDialogOpen(false);
+                setPublishedUrl(null);
+              }}>
+                Cerrar
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <header className="h-16 border-b border-slate-200 px-6 flex items-center justify-between bg-white z-50 sticky top-0">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={() => window.history.back()} data-testid="back-btn">
@@ -168,9 +365,23 @@ const Dashboard = () => {
           </Button>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold text-slate-900">
-                {scheduleData?.nombre_archivo || 'Horario'}
-              </h1>
+              {/* Título editable inline */}
+              <input
+                ref={titleInputRef}
+                type="text"
+                value={editableTitle}
+                onChange={(e) => {
+                  setEditableTitle(e.target.value);
+                  setPublishFilename(e.target.value);
+                }}
+                onFocus={() => setIsTitleFocused(true)}
+                onBlur={() => setIsTitleFocused(false)}
+                className={`text-xl font-semibold text-slate-900 bg-transparent border-0 outline-none focus:bg-slate-50 focus:border focus:border-slate-300 rounded px-1 py-0.5 transition-all min-w-0 max-w-xs ${
+                  isTitleFocused ? 'border border-slate-300 bg-slate-50 shadow-sm' : ''
+                }`}
+                title="Haz clic para editar el nombre del archivo"
+                data-testid="schedule-title-input"
+              />
               {hasUnsavedChanges && (
                 <Badge variant="outline" className="text-amber-600 border-amber-600">
                   Sin guardar
@@ -234,9 +445,24 @@ const Dashboard = () => {
             <BookOpenCheck className="w-4 h-4 mr-1" />
             Diccionario
           </Button>
-          <Button onClick={handleExport} data-testid="export-json-btn">
+          {/* Botón descargar local */}
+          <Button
+            variant="outline"
+            onClick={handleExport}
+            title="Descargar JSON localmente"
+            data-testid="export-json-btn"
+          >
             <Download className="w-4 h-4 mr-2" />
-            Exportar JSON
+            Descargar
+          </Button>
+          {/* Botón publicar en R2 */}
+          <Button
+            onClick={handleOpenPublishDialog}
+            title="Publicar oferta en Cloudflare R2"
+            data-testid="publish-r2-btn"
+          >
+            <Upload className="w-4 h-4 mr-2" />
+            Publicar
           </Button>
         </div>
       </header>
