@@ -390,7 +390,12 @@ async def publish_schedule(request: Request, schedule_id: str):
 
     try:
         public_url = await asyncio.to_thread(
-            upload_schedule_json, semester, filename, exported
+            upload_schedule_json,
+            semester,
+            filename,
+            exported,
+            program_id,
+            schedule.get("programa_nombre", ""),
         )
     except Exception as e:
         logging.error(f"Error al publicar en R2 (schedule={schedule_id}): {e}", exc_info=True)

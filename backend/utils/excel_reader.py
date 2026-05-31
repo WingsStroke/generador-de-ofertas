@@ -28,10 +28,11 @@ class ExcelReader:
         """Obtiene nombres de todas las hojas"""
         return self.sheets
         
-    def detect_all_schedule_structures(self) -> List[Tuple[int, int, List[str], List[Tuple[str, str, int]], int]]:
+    def detect_all_schedule_structures(self) -> List[Tuple[int, int, List[Tuple[str, int]], List[Tuple[str, str, int]], int]]:
         """
         Detecta múltiples estructuras de horario en una hoja.
         Retorna lista de tuplas: (start_row, start_col, dias_encontrados, horas, end_row)
+        donde dias_encontrados es una lista de (dia_corto, col_idx).
         """
         dias_semana = ["LUNES", "MARTES", "MIÉRCOLES", "MIERCOLES", "JUEVES", "VIERNES", "SÁBADO", "SABADO", "HORA"]
 
@@ -62,17 +63,18 @@ class ExcelReader:
             end_row = headers[i+1][0] - 1 if i + 1 < len(headers) else max_r
             
             dias_encontrados = []
-            for cell in self.current_sheet[start_row]:
+            for col_idx, cell in enumerate(self.current_sheet[start_row], 1):
                 if cell.value and isinstance(cell.value, str):
                     val_upper = cell.value.strip().upper()
                     for dia in ["LUNES", "MARTES", "MIÉRCOLES", "MIERCOLES", "JUEVES", "VIERNES", "SÁBADO", "SABADO"]:
                         if _matches_keyword(val_upper, dia):
                             dia_corto = self._dia_to_short(dia)
-                            if dia_corto not in dias_encontrados:
-                                dias_encontrados.append(dia_corto)
+                            if not any(d[0] == dia_corto for d in dias_encontrados):
+                                dias_encontrados.append((dia_corto, col_idx))
+                            break
             
             if not dias_encontrados:
-                dias_encontrados = ["L", "M", "W", "J", "V"]
+                dias_encontrados = [("L", start_col+1), ("M", start_col+2), ("W", start_col+3), ("J", start_col+4), ("V", start_col+5)]
                 
             horas = self._extract_time_slots(start_row + 1, end_row)
             structures.append((start_row, start_col, dias_encontrados, horas, end_row))
@@ -89,7 +91,7 @@ class ExcelReader:
         
         all_dias = []
         for s in structures:
-            for d in s[2]:
+            for d, _ in s[2]:
                 if d not in all_dias:
                     all_dias.append(d)
                     
@@ -241,7 +243,6 @@ class ExcelReader:
             if not horas:
                 continue
 
-            days_end_col = start_col + len(dias)
             hora_by_row = {h[2]: (h[0], h[1]) for h in horas}
             first_time_row = horas[0][2]
             last_time_row = horas[-1][2]
@@ -268,11 +269,7 @@ class ExcelReader:
                     if len(stripped) > 25 and len(stripped.split()) > 4:
                         break
 
-                for dia_idx, dia in enumerate(dias):
-                    col = start_col + 1 + dia_idx
-                    if col > days_end_col:
-                        break
-                    
+                for dia, col in dias:
                     if merged_handler:
                         content = merged_handler.get_effective_value(r, col)
                         if content:

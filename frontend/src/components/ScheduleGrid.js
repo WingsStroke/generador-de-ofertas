@@ -50,9 +50,16 @@ const ScheduleGrid = () => {
     }
   };
 
-  const handleBlockClick = (block, e) => {
+  const handleBlockClick = (block, e, dia, hora_inicio, celda_ref) => {
     e.stopPropagation();
     if (isDragging) return;
+
+    // Si se presiona Ctrl, Alt o Shift al hacer clic, se ilumina la celda en ambas tablas
+    if (e.ctrlKey || e.altKey || e.shiftKey) {
+      setSelectedCell({ dia, hora_inicio, celda_ref });
+      return;
+    }
+
     if (selectionMode) {
       if (block._ghost) return; // Ghosts no participan en selección múltiple
       toggleBlockSelection(block.id);
@@ -273,7 +280,7 @@ const ScheduleGrid = () => {
                                         } ${
                                           isSelected ? 'ring-2 ring-blue-500 ring-offset-1' : ''
                                         } ${selectionMode ? 'cursor-pointer' : ''} relative`}
-                                        onClick={(e) => handleBlockClick(block, e)}
+                                        onClick={(e) => handleBlockClick(block, e, dia, hora.inicio, cellData?.celda_ref)}
                                         data-testid={`block-${block.id}`}
                                       >
                                         {/* Semáforo de confianza */}

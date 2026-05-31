@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 router = APIRouter(tags=["Upload"])
 
-MAX_FILE_SIZE = 10 * 1024 * 1024
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB — soporta PDFs grandes de oferta académica
 
 EXCEL_SIGNATURES = {
     b'\x50\x4B\x03\x04': 'xlsx',  # ZIP (XLSX es un ZIP)

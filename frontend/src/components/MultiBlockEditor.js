@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -46,6 +46,17 @@ const MultiBlockEditor = ({ onClose }) => {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const suggestionsRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const selectedBlocks = useMemo(() => {
     if (!scheduleData) return [];
@@ -332,6 +343,7 @@ const MultiBlockEditor = ({ onClose }) => {
                 id="me-materia"
                 value={formData.materia}
                 onChange={(e) => handleChange('materia', e.target.value)}
+                onFocus={() => formData.materia.length >= 2 && setShowSuggestions(true)}
                 placeholder="Buscar materia..."
                 data-testid="multi-materia-input"
               />
@@ -341,7 +353,7 @@ const MultiBlockEditor = ({ onClose }) => {
                 </div>
               )}
               {showSuggestions && suggestions.length > 0 && (
-                <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+                <div ref={suggestionsRef} className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-auto">
                   {suggestions.map((subject) => (
                     <button
                       key={subject.id}

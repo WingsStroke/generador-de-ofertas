@@ -20,7 +20,7 @@ function App() {
               <Route path="/teachers" element={<Teachers />} />
             </Routes>
           </BrowserRouter>
-          <Toaster position="top-right" />
+          <Toaster position="bottom-right" />
         </div>
       </HistoryProvider>
     </ScheduleProvider>

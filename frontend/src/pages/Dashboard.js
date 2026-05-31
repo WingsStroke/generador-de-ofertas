@@ -214,11 +214,40 @@ const Dashboard = () => {
     }
   };
 
-  const handleCopyUrl = () => {
+  const handleCopyUrl = async () => {
     if (publishedUrl) {
-      navigator.clipboard.writeText(publishedUrl);
-      setUrlCopied(true);
-      setTimeout(() => setUrlCopied(false), 2000);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+          await navigator.clipboard.writeText(publishedUrl);
+          setUrlCopied(true);
+          setTimeout(() => setUrlCopied(false), 2000);
+          return;
+        } catch (err) {
+          console.error("Error copiando con API clipboard:", err);
+        }
+      }
+      
+      // Fallback para entornos donde clipboard no está disponible (ej. IP sin HTTPS)
+      try {
+        const textArea = document.createElement("textarea");
+        textArea.value = publishedUrl;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-9999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const successful = document.execCommand('copy');
+        if (successful) {
+          setUrlCopied(true);
+          setTimeout(() => setUrlCopied(false), 2000);
+        } else {
+          toast.error("No se pudo copiar automáticamente");
+        }
+        document.body.removeChild(textArea);
+      } catch (err) {
+        console.error('Fallback error:', err);
+        toast.error("Error al copiar el enlace");
+      }
     }
   };
 
@@ -293,8 +322,8 @@ const Dashboard = () => {
                 <Check className="w-5 h-5" />
                 Publicado exitosamente
               </div>
-              <div className="flex items-center gap-2 border border-slate-200 rounded-md p-2 bg-slate-50">
-                <span className="text-xs text-slate-600 flex-1 truncate font-mono">{publishedUrl}</span>
+              <div className="flex items-center gap-2 border border-slate-200 rounded-md p-2 bg-slate-50 overflow-hidden">
+                <span className="text-xs text-slate-600 flex-1 truncate font-mono min-w-0" title={publishedUrl}>{publishedUrl}</span>
                 <Button
                   size="sm"
                   variant="ghost"

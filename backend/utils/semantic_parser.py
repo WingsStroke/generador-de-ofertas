@@ -15,7 +15,7 @@ _STANDALONE_ROOM_PATTERN = re.compile(
 
 _LOCATION_KEYWORDS = [
     'lab', 'laboratorio', 'sala', 'salón', 'salon', 'aula', 'edificio',
-    'piso', 'bloque', 'taller', 'virtual', 'planta',
+    'piso', 'bloque', 'taller', 'virtual', 'planta', 'grupo', 'grupos',
 ]
 
 
@@ -92,6 +92,13 @@ class SemanticParser:
         origen_docente = "motor"
         aula = None
 
+        # ── Limpieza especial de la palabra "Aula" ───────────────────────────
+        # A veces aparece "Aula Nombre Docente" o la palabra "Aula" pegada al final.
+        for i in range(1, len(parts)):
+            if re.match(r'(?i)^aula\s+[A-Z]', parts[i].strip()):
+                parts[i] = re.sub(r'(?i)^aula\s+', '', parts[i].strip())
+
+
         # ── 1. Búsqueda de docente en diccionario con RapidFuzz ─────────────
         teachers_ascii = {}
         teachers_ascii_keys = []
@@ -143,15 +150,19 @@ class SemanticParser:
 
         # ── 3. Inferir docente y aula desde fragmentos restantes ────────────
         if len(parts) >= 2:
-            second_part = parts[1]
-            if not docente and SemanticParser._is_person_name(second_part):
-                docente = second_part
+            # Limpiar "Aula" si quedó incrustada al inicio de la parte
+            second_part_clean = re.sub(r'(?i)^aula\s+', '', parts[1]).strip()
+            
+            if not docente and SemanticParser._is_person_name(second_part_clean):
+                docente = second_part_clean
                 if len(parts) >= 3:
                     aula = parts[2]
             else:
-                aula = second_part
-                if len(parts) >= 3 and not docente and SemanticParser._is_person_name(parts[2]):
-                    docente = parts[2]
+                aula = parts[1]
+                if len(parts) >= 3 and not docente:
+                    third_part_clean = re.sub(r'(?i)^aula\s+', '', parts[2]).strip()
+                    if SemanticParser._is_person_name(third_part_clean):
+                        docente = third_part_clean
 
         if not docente and len(parts) >= 3:
             for part in parts[1:]:
@@ -241,6 +252,9 @@ class SemanticParser:
 
         # 4d. Quitar código de grupo residual al final ("CALCULO III A1" → "CALCULO III")
         cleaned = re.sub(r'\s+[A-Z]\d+\s*$', '', cleaned).strip()
+
+        # 4e. Quitar la palabra "Aula" si quedó pegada al final de la materia
+        cleaned = re.sub(r'(?i)\s+aula\s*$', '', cleaned).strip()
 
         # Limpiar separadores sobrantes
         cleaned = re.sub(r'^[-–—,;\s]+|[-–—,;\s]+$', '', cleaned).strip()

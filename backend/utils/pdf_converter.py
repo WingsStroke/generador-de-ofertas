@@ -57,7 +57,7 @@ def _cluster_coordinates(coords: List[float], tolerance: float = 3.0) -> List[fl
     current: List[float] = [coords[0]]
 
     for val in coords[1:]:
-        if val - current[-1] <= tolerance:
+        if val - current[0] <= tolerance:
             current.append(val)
         else:
             clusters.append(current)
@@ -208,7 +208,16 @@ def pdf_to_xlsx(pdf_path: str) -> str:
                             raw_text = cropped.extract_text()
                             text_val = _clean_pdf_text(raw_text.strip()) if raw_text else ""
 
-                            ws.cell(row=excel_r1, column=excel_c1, value=text_val)
+                            from openpyxl.styles import Border, Side, Alignment, Font, PatternFill
+                            thin = Side(border_style="thin", color="000000")
+                            
+                            c_obj = ws.cell(row=excel_r1, column=excel_c1, value=text_val)
+                            c_obj.border = Border(top=thin, left=thin, right=thin, bottom=thin)
+                            c_obj.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                            
+                            if text_val and text_val.strip().upper() in ["HORA", "LUNES", "MARTES", "MIÉRCOLES", "MIERCOLES", "JUEVES", "VIERNES", "SÁBADO", "SABADO"]:
+                                c_obj.font = Font(bold=True)
+                                c_obj.fill = PatternFill(start_color="EAEAEA", end_color="EAEAEA", fill_type="solid")
 
                             # Registrar fusión si la celda ocupa más de 1 fila o columna
                             if excel_r2 > excel_r1 or excel_c2 > excel_c1:

@@ -28,6 +28,12 @@ class TextCleaner:
 
         text = text.strip()
         text = re.sub(r'[ \t\f\v]+', ' ', text)  # normaliza espacios, conserva \n
+        
+        # Insertar separadores (guiones) explícitamente antes de marcadores conocidos 
+        # para ayudar al parser semántico, sin importar si están en nueva línea o no.
+        text = re.sub(r'(?i)[ \t\n]+(aula[ \t\n]+[A-ZÁÉÍÓÚÑ])', r' - \1', text)
+        text = re.sub(r'(?i)[ \t\n]+(lab\b|laboratorio|sal[oó]n|sala|bloque)\b', r' - \1', text)
+        text = re.sub(r'(?i)[ \t\n]+(grupo\s+[A-Z0-9]+)\b', r' - \1', text)
 
         # ── Procesamiento de líneas con salto de párrafo ──────────────────────
         if '\n' in text:
@@ -56,7 +62,7 @@ class TextCleaner:
             # Contar cuántas líneas tienen grupo
             total_groups = sum(1 for line in lines if group_pattern.search(line))
 
-            # Si hay ≤1 grupo en total, es una sola clase con texto largo → unir
+            # Si hay ≤1 grupo en total, es una sola clase con texto largo → unir con espacio
             if total_groups <= 1:
                 return [re.sub(r'\s+', ' ', ' '.join(lines))]
 
