@@ -5,11 +5,13 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
 const API = BACKEND_URL ? `${BACKEND_URL}/api` : '/api';
 
 const Teachers = () => {
+  const { role } = useAuth();
   const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -173,77 +175,79 @@ const Teachers = () => {
         <div className="max-w-4xl mx-auto space-y-6">
 
           {/* ─── Panel de Añadir ─── */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <h2 className="text-lg font-medium text-slate-900 mb-4">Añadir Docente</h2>
-            <form onSubmit={handleAddTeacher} className="flex gap-3">
-              <Input
-                value={newTeacherName}
-                onChange={(e) => {
-                  setNewTeacherName(e.target.value);
-                  if (similarWarning) setSimilarWarning(null);
-                }}
-                placeholder="Nombre completo del docente..."
-                className="flex-1"
-                disabled={adding}
-              />
-              <Button type="submit" disabled={adding || !newTeacherName.trim()}>
-                {adding ? 'Verificando...' : (
-                  <>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Añadir
-                  </>
-                )}
-              </Button>
-            </form>
+          {role === 'admin' && (
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+              <h2 className="text-lg font-medium text-slate-900 mb-4">Añadir Docente</h2>
+              <form onSubmit={handleAddTeacher} className="flex gap-3">
+                <Input
+                  value={newTeacherName}
+                  onChange={(e) => {
+                    setNewTeacherName(e.target.value);
+                    if (similarWarning) setSimilarWarning(null);
+                  }}
+                  placeholder="Nombre completo del docente..."
+                  className="flex-1"
+                  disabled={adding}
+                />
+                <Button type="submit" disabled={adding || !newTeacherName.trim()}>
+                  {adding ? 'Verificando...' : (
+                    <>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Añadir
+                    </>
+                  )}
+                </Button>
+              </form>
 
-            {/* Advertencia de similares */}
-            {similarWarning && (
-              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
-                <div className="flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-amber-800 mb-1">
-                      ¿Posible duplicado?
-                    </p>
-                    <p className="text-xs text-amber-700 mb-2">
-                      Se encontraron docentes similares en el diccionario. Puede ser el mismo docente con nombre abreviado o completo:
-                    </p>
-                    <ul className="space-y-1 mb-3">
-                      {similarWarning.similar.map(([name, score]) => (
-                        <li key={name} className="flex items-center justify-between text-xs bg-amber-100 rounded px-2 py-1.5">
-                          <span className="font-mono font-medium text-amber-900">{name}</span>
-                          <span className="text-amber-600 ml-2">Similitud: {score}%</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="text-xs text-amber-700 mb-3">
-                      Nombre a añadir: <strong className="font-mono">{similarWarning.normalized}</strong>
-                    </p>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-amber-300 text-amber-800 hover:bg-amber-100"
-                        onClick={handleCancelSimilar}
-                      >
-                        <X className="w-3.5 h-3.5 mr-1.5" />
-                        Cancelar
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="bg-amber-600 hover:bg-amber-700 text-white"
-                        onClick={handleForceAdd}
-                        disabled={adding}
-                      >
-                        <Check className="w-3.5 h-3.5 mr-1.5" />
-                        {adding ? 'Añadiendo...' : 'Sí, añadirlo de todas formas'}
-                      </Button>
+              {/* Advertencia de similares */}
+              {similarWarning && (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-amber-800 mb-1">
+                        ¿Posible duplicado?
+                      </p>
+                      <p className="text-xs text-amber-700 mb-2">
+                        Se encontraron docentes similares en el diccionario. Puede ser el mismo docente con nombre abreviado o completo:
+                      </p>
+                      <ul className="space-y-1 mb-3">
+                        {similarWarning.similar.map(([name, score]) => (
+                          <li key={name} className="flex items-center justify-between text-xs bg-amber-100 rounded px-2 py-1.5">
+                            <span className="font-mono font-medium text-amber-900">{name}</span>
+                            <span className="text-amber-600 ml-2">Similitud: {score}%</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-xs text-amber-700 mb-3">
+                        Nombre a añadir: <strong className="font-mono">{similarWarning.normalized}</strong>
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-amber-300 text-amber-800 hover:bg-amber-100"
+                          onClick={handleCancelSimilar}
+                        >
+                          <X className="w-3.5 h-3.5 mr-1.5" />
+                          Cancelar
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="bg-amber-600 hover:bg-amber-700 text-white"
+                          onClick={handleForceAdd}
+                          disabled={adding}
+                        >
+                          <Check className="w-3.5 h-3.5 mr-1.5" />
+                          {adding ? 'Añadiendo...' : 'Sí, añadirlo de todas formas'}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           {/* ─── Lista de Docentes ─── */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col h-[calc(100vh-280px)]">
@@ -316,29 +320,31 @@ const Teachers = () => {
                       ) : (
                         <>
                           <span className="font-medium text-slate-700">{teacher}</span>
-                          <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-blue-500 hover:bg-blue-50"
-                              onClick={() => {
-                                setEditingTeacher(teacher);
-                                setEditName(teacher);
-                              }}
-                              title="Editar docente"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-red-500 hover:bg-red-50"
-                              onClick={() => handleDeleteTeacher(teacher)}
-                              title="Eliminar docente"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
+                          {role === 'admin' && (
+                            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-blue-500 hover:bg-blue-50"
+                                onClick={() => {
+                                  setEditingTeacher(teacher);
+                                  setEditName(teacher);
+                                }}
+                                title="Editar docente"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-red-500 hover:bg-red-50"
+                                onClick={() => handleDeleteTeacher(teacher)}
+                                title="Eliminar docente"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          )}
                         </>
                       )}
                     </li>

@@ -11,6 +11,7 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     username: str
+    role: str
 
 class LoginRequest(BaseModel):
     username: str
@@ -25,13 +26,22 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
             headers={"WWW-Authenticate": "Bearer"},
         )
     username = payload.get("sub")
+    role = payload.get("role", "user")
     if username is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token no contiene identidad",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return username
+    return {"username": username, "role": role}
+
+async def get_current_admin(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos de administrador",
+        )
+    return current_user
 
 @router.post("/auth/login", response_model=Token)
 async def login(req: LoginRequest):
@@ -46,9 +56,10 @@ async def login(req: LoginRequest):
             headers={"WWW-Authenticate": "Bearer"},
         )
         
-    access_token = create_access_token(data={"sub": user["username"]})
-    return {"access_token": access_token, "token_type": "bearer", "username": user["username"]}
+    role = user.get("role", "user")
+    access_token = create_access_token(data={"sub": user["username"], "role": role})
+    return {"access_token": access_token, "token_type": "bearer", "username": user["username"], "role": role}
 
 @router.get("/auth/me")
-async def read_users_me(current_user: str = Depends(get_current_user)):
-    return {"username": current_user}
+async def read_users_me(current_user: dict = Depends(get_current_user)):
+    return current_user

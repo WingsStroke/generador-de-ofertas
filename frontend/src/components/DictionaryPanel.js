@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useSchedule } from '../context/ScheduleContext';
+import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
@@ -126,6 +127,7 @@ const ConfidencePill = ({ conf, inDict }) => {
 // ─── Componente principal ────────────────────────────────────────────────────
 const DictionaryPanel = ({ scheduleId, onNavigate }) => {
   const { scheduleData } = useSchedule();
+  const { role } = useAuth();
   const [activeTab, setActiveTab] = useState('docentes');
   const [knownTeachers, setKnownTeachers] = useState(new Set());
   const [loadingDict, setLoadingDict] = useState(false);
@@ -216,16 +218,18 @@ const DictionaryPanel = ({ scheduleId, onNavigate }) => {
                   ? <span className="text-amber-600 font-medium">{newTeachers.length} nuevo{newTeachers.length !== 1 ? 's' : ''}</span>
                   : <span className="text-emerald-600 font-medium">Todos en diccionario ✓</span>}
               </span>
-              <Button
-                size="sm"
-                className="h-7 text-[11px] bg-blue-600 hover:bg-blue-700 text-white gap-1"
-                onClick={handleSaveNew}
-                disabled={saving || loadingDict || newTeachers.length === 0}
-              >
-                {saving
-                  ? <span className="animate-pulse">Guardando...</span>
-                  : <><Download className="w-3 h-3" />Guardar nuevos</>}
-              </Button>
+              {role === 'admin' && (
+                <Button
+                  size="sm"
+                  className="h-7 text-[11px] bg-blue-600 hover:bg-blue-700 text-white gap-1"
+                  onClick={handleSaveNew}
+                  disabled={saving || loadingDict || newTeachers.length === 0}
+                >
+                  {saving
+                    ? <span className="animate-pulse">Guardando...</span>
+                    : <><Download className="w-3 h-3" />Guardar nuevos</>}
+                </Button>
+              )}
             </div>
             <div className="relative">
               <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />

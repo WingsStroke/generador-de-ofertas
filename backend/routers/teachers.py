@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from storage.teachers_storage import teachers_storage
 from storage import storage
 from utils.semantic_parser import SemanticParser
 from utils.schedule_helpers import _iter_celdas_collections
+from routers.auth import get_current_admin
 
 router = APIRouter(prefix="/teachers", tags=["Teachers"])
 
@@ -12,7 +13,7 @@ async def get_teachers():
     return {"teachers": teachers_storage.get_all()}
 
 @router.post("")
-async def add_teacher(request: Request):
+async def add_teacher(request: Request, admin: dict = Depends(get_current_admin)):
     """Añade uno o varios docentes al diccionario.
     Soporta comprobación de duplicados fuzzy.
     Si hay similares y force=False, retorna requires_confirmation=True sin añadir.
@@ -41,13 +42,13 @@ async def add_teacher(request: Request):
     raise HTTPException(status_code=400, detail="Se requiere 'name' o lista 'names'")
 
 @router.delete("/{name}")
-async def remove_teacher(name: str):
+async def remove_teacher(name: str, admin: dict = Depends(get_current_admin)):
     """Elimina un docente del diccionario. Operación idempotente: no lanza 404 si no existe."""
     removed = teachers_storage.remove(name)
     return {"message": "Docente eliminado" if removed else "Docente no encontrado (ya eliminado)", "removed": removed}
 
 @router.patch("/{name}")
-async def replace_teacher(name: str, request: Request):
+async def replace_teacher(name: str, request: Request, admin: dict = Depends(get_current_admin)):
     """Reemplaza/fusiona un docente con otro nombre (para resolver duplicados)."""
     data = await request.json()
     new_name = data.get("new_name", "")
@@ -59,7 +60,7 @@ async def replace_teacher(name: str, request: Request):
     return {"message": "Docente actualizado", "old": name, "new": new_name}
 
 @router.post("/extract-from-schedule/{schedule_id}")
-async def extract_teachers_from_schedule(schedule_id: str):
+async def extract_teachers_from_schedule(schedule_id: str, admin: dict = Depends(get_current_admin)):
     """Extrae y guarda todos los docentes válidos de un horario"""
     schedule = await storage.get(schedule_id)
     if not schedule:

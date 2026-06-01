@@ -20,6 +20,7 @@ import ScheduleGrid from '../components/ScheduleGrid';
 import ExcelPreview from '../components/ExcelPreview';
 import GlobalSearch from '../components/GlobalSearch';
 import DictionaryPanel from '../components/DictionaryPanel';
+import { useAuth } from '../context/AuthContext';
 import { CollabProvider, useCollab } from '../context/CollabContext';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
@@ -50,6 +51,7 @@ const DashboardInner = () => {
   const [currentSheet, setCurrentSheet] = useState(null);
   const [showDictionary, setShowDictionary] = useState(false);
   
+  const { role } = useAuth();
   const { isConnected, requestLock, isSheetLockedByOther, locks, presence, username, forceUnlock, remoteUpdates, notifyUpdate } = useCollab();
 
   useEffect(() => {
@@ -570,14 +572,16 @@ const DashboardInner = () => {
             Descargar
           </Button>
           {/* Botón publicar en R2 */}
-          <Button
-            onClick={handleOpenPublishDialog}
-            title="Publicar oferta en Cloudflare R2"
-            data-testid="publish-r2-btn"
-          >
-            <Upload className="w-4 h-4 mr-2" />
-            Publicar
-          </Button>
+          {role === 'admin' && (
+            <Button
+              onClick={handleOpenPublishDialog}
+              title="Publicar oferta en Cloudflare R2"
+              data-testid="publish-r2-btn"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Publicar
+            </Button>
+          )}
         </div>
       </header>
 
@@ -595,9 +599,15 @@ const DashboardInner = () => {
                   >
                     {isSheetLockedByOther(hoja) ? (
                       <button
-                        title={`Bloqueado por ${locks[hoja]}. Doble clic para FORZAR DESBLOQUEO (Admin)`}
-                        onDoubleClick={(e) => { e.stopPropagation(); forceUnlock(hoja); toast.success('Forzando desbloqueo...'); }}
-                        className="p-0 border-0 bg-transparent flex items-center justify-center cursor-pointer hover:bg-slate-100 rounded"
+                        title={role === 'admin' ? `Bloqueado por ${locks[hoja]}. Doble clic para FORZAR DESBLOQUEO (Admin)` : `Bloqueado por ${locks[hoja]}`}
+                        onDoubleClick={(e) => { 
+                          e.stopPropagation(); 
+                          if(role === 'admin') {
+                            forceUnlock(hoja); 
+                            toast.success('Forzando desbloqueo...');
+                          } 
+                        }}
+                        className={`p-0 border-0 bg-transparent flex items-center justify-center ${role === 'admin' ? 'cursor-pointer hover:bg-slate-100' : 'cursor-default'} rounded`}
                       >
                         <Lock className="w-4 h-4 text-amber-500" />
                       </button>

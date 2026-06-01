@@ -22,7 +22,7 @@ const Login = () => {
         username,
         password
       });
-      login(response.data.access_token, response.data.username);
+      login(response.data.access_token, response.data.username, response.data.role);
       toast.success("¡Bienvenido!");
       navigate('/');
     } catch (error) {

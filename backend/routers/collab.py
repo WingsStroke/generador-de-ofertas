@@ -16,8 +16,9 @@ async def collab_endpoint(websocket: WebSocket, schedule_id: str, token: str = Q
         return
         
     username = payload.get("sub")
+    role = payload.get("role", "user")
     await manager.connect(schedule_id, username, websocket)
-    logger.info(f"WebSocket connected: {username} on {schedule_id}")
+    logger.info(f"WebSocket connected: {username} ({role}) on {schedule_id}")
     
     # Broadcast current state to the new user and notify others of presence
     presence = await manager.get_presence(schedule_id)
@@ -72,16 +73,33 @@ async def collab_endpoint(websocket: WebSocket, schedule_id: str, token: str = Q
                             "locks": locks
                         })
             elif action == "FORCE_UNLOCK":
+                if role != "admin":
+                    await websocket.send_json({
+                        "action": "ERROR",
+                        "message": "No tienes permisos para forzar desbloqueo"
+                    })
+                    continue
+                
                 sheet = data.get("sheet")
                 if sheet:
+                    victim = None
                     async with manager._mutex:
                         if schedule_id in manager.locks and sheet in manager.locks[schedule_id]:
+                            victim = manager.locks[schedule_id][sheet]
                             del manager.locks[schedule_id][sheet]
-                    locks = await manager.get_locks(schedule_id)
-                    await manager.broadcast(schedule_id, {
-                        "action": "LOCK_STATUS_UPDATE",
-                        "locks": locks
-                    })
+                    
+                    if victim:
+                        locks = await manager.get_locks(schedule_id)
+                        await manager.broadcast(schedule_id, {
+                            "action": "LOCK_STATUS_UPDATE",
+                            "locks": locks
+                        })
+                        await manager.broadcast(schedule_id, {
+                            "action": "FORCE_UNLOCKED",
+                            "sheet": sheet,
+                            "by": username,
+                            "victim": victim
+                        })
             elif action == "NOTIFY_UPDATE":
                 sheet = data.get("sheet")
                 if sheet:

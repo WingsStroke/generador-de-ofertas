@@ -14,7 +14,7 @@ load_dotenv(Path(__file__).parent.parent / '.env')
 from database import db_instance, init_db, close_db
 from utils.auth_helper import get_password_hash
 
-async def create_user(username, password):
+async def create_user(username, password, role="user"):
     await init_db()
     
     if db_instance.users is None:
@@ -29,16 +29,23 @@ async def create_user(username, password):
         await close_db()
         return
 
+    # Validar rol
+    if role not in ["admin", "user"]:
+        print(f"Error: El rol '{role}' no es válido. Debe ser 'admin' o 'user'.")
+        await close_db()
+        return
+
     # Crear usuario
     hashed_password = get_password_hash(password)
     user_doc = {
         "username": username,
         "password_hash": hashed_password,
+        "role": role,
         "created_at": datetime.now(timezone.utc)
     }
     
     await db_instance.users.insert_one(user_doc)
-    print(f"Éxito: Usuario '{username}' creado correctamente.")
+    print(f"Éxito: Usuario '{username}' creado correctamente con el rol '{role}'.")
     
     await close_db()
 
@@ -46,6 +53,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Crear un usuario administrativo en MongoDB")
     parser.add_argument("--username", required=True, help="Nombre de usuario")
     parser.add_argument("--password", required=True, help="Contraseña segura")
+    parser.add_argument("--role", default="user", choices=["admin", "user"], help="Rol del usuario (admin o user)")
     args = parser.parse_args()
     
-    asyncio.run(create_user(args.username, args.password))
+    asyncio.run(create_user(args.username, args.password, args.role))

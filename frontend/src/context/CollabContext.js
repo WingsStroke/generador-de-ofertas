@@ -72,6 +72,13 @@ export const CollabProvider = ({ scheduleId, children }) => {
               // We expose this so Dashboard can auto-refresh
               setRemoteUpdates(prev => [...prev, { sheet: data.sheet, byUser: data.by_user, timestamp: Date.now() }]);
               break;
+            case 'FORCE_UNLOCKED':
+              if (data.victim === username) {
+                toast.warning(`Tu sesión en la hoja ${data.sheet} fue desbloqueada por el administrador ${data.by}`, {
+                  duration: 5000,
+                });
+              }
+              break;
             default:
               break;
           }
