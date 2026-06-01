@@ -16,7 +16,7 @@ import json
 import asyncio
 import logging
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any, Callable
 from collections import OrderedDict
 import aiofiles
@@ -116,7 +116,7 @@ class MemoryStorage:
         
         try:
             created = datetime.fromisoformat(created_at)
-            cutoff = datetime.utcnow() - timedelta(hours=self.ttl_hours)
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=self.ttl_hours)
             return created < cutoff
         except:
             return False
@@ -164,7 +164,7 @@ class MemoryStorage:
         async with self._lock:
             # Agregar metadata de control
             data['_backend'] = 'memory'
-            data['_created_at'] = datetime.utcnow().isoformat()
+            data['_created_at'] = datetime.now(timezone.utc).isoformat()
             data['_updated_at'] = data['_created_at']
             data['_v'] = data.get('_v', 0)
             
@@ -280,7 +280,7 @@ class MemoryStorage:
                 raise
             
             # Actualizar metadata
-            data['_updated_at'] = datetime.utcnow().isoformat()
+            data['_updated_at'] = datetime.now(timezone.utc).isoformat()
             data['_v'] = data.get('_v', 0) + 1
             
             # Guardar en caché

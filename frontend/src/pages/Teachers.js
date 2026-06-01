@@ -6,8 +6,8 @@ import { Input } from '../components/ui/input';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+const API = BACKEND_URL ? `${BACKEND_URL}/api` : '/api';
 
 const Teachers = () => {
   const [teachers, setTeachers] = useState([]);

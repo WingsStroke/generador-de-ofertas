@@ -20,8 +20,8 @@ import { useSchedule } from '../context/ScheduleContext';
 import { useHistory } from '../context/HistoryContext';
 import { Search, Trash2, Plus, Clock, Calendar, Save, CheckCircle2 } from 'lucide-react';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+const API = BACKEND_URL ? `${BACKEND_URL}/api` : '/api';
 
 const BlockEditor = ({ block, onClose }) => {
   const { scheduleId } = useParams();

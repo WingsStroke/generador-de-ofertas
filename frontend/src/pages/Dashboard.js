@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
-import { Download, ArrowLeft, FileText, Undo2, Redo2, MousePointer2, BookOpenCheck, Upload, ExternalLink, Copy, Check } from 'lucide-react';
+import { Download, ArrowLeft, FileText, Undo2, Redo2, MousePointer2, BookOpenCheck, Upload, ExternalLink, Copy, Check, Lock } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { Badge } from '../components/ui/badge';
@@ -20,11 +20,28 @@ import ScheduleGrid from '../components/ScheduleGrid';
 import ExcelPreview from '../components/ExcelPreview';
 import GlobalSearch from '../components/GlobalSearch';
 import DictionaryPanel from '../components/DictionaryPanel';
+import { CollabProvider, useCollab } from '../context/CollabContext';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+const API = BACKEND_URL ? `${BACKEND_URL}/api` : '/api';
 
-const Dashboard = () => {
+const stringToColor = (str) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+  return '#' + '00000'.substring(0, 6 - c.length) + c;
+};
+
+const getInitials = (name) => {
+  if (!name) return '??';
+  const parts = name.split('-');
+  if (parts.length > 1) return parts[0].substring(0, 1) + parts[1].substring(0, 1);
+  return name.substring(0, 2).toUpperCase();
+};
+
+const DashboardInner = () => {
   const { scheduleId } = useParams();
   const { scheduleData, setScheduleData, setSubjects, selectionMode, setSelectionMode,
     selectedBlockIds, exitSelectionMode, setExcelHtmlBySheet, excelHtmlBySheet, setLoadingHtmlBySheet } = useSchedule();
@@ -32,6 +49,14 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [currentSheet, setCurrentSheet] = useState(null);
   const [showDictionary, setShowDictionary] = useState(false);
+  
+  const { isConnected, requestLock, isSheetLockedByOther, locks, presence, username, forceUnlock, remoteUpdates, notifyUpdate } = useCollab();
+
+  useEffect(() => {
+    if (isConnected && currentSheet) {
+      requestLock(currentSheet);
+    }
+  }, [isConnected, currentSheet, requestLock]);
 
   // Estado del título editable
   const [editableTitle, setEditableTitle] = useState('');
@@ -57,13 +82,58 @@ const Dashboard = () => {
       });
       setExcelHtmlBySheet((prev) => ({ ...prev, [sheetName]: res.data }));
     } catch (err) {
-      // El archivo puede no estar disponible si el servidor fue reiniciado.
-      // En ese caso, ExcelPreview cae al fallback de reconstrucción simple.
       console.warn(`Vista HTML no disponible para hoja "${sheetName}":`, err?.response?.status);
     } finally {
       setLoadingHtmlBySheet((prev) => ({ ...prev, [sheetName]: false }));
     }
   }, [scheduleId, setExcelHtmlBySheet, setLoadingHtmlBySheet]);
+
+  // Interceptar mutaciones para notificar a los demás usuarios
+  useEffect(() => {
+    const reqInterceptor = axios.interceptors.response.use(
+      (response) => {
+        const method = response.config.method?.toLowerCase();
+        if (method && ['post', 'put', 'patch', 'delete'].includes(method)) {
+          if (response.config.url.includes(`/api/schedule/${scheduleId}`)) {
+            if (currentSheet) notifyUpdate(currentSheet);
+          }
+        }
+        return response;
+      },
+      (error) => Promise.reject(error)
+    );
+    return () => {
+      axios.interceptors.response.eject(reqInterceptor);
+    };
+  }, [scheduleId, currentSheet, notifyUpdate]);
+
+  // Reaccionar a cambios remotos
+  useEffect(() => {
+    if (remoteUpdates && remoteUpdates.length > 0) {
+      const lastUpdate = remoteUpdates[remoteUpdates.length - 1];
+      toast.info(`Sincronizando cambios de ${lastUpdate.byUser}...`);
+      
+      axios.get(`${API}/schedule/${scheduleId}`).then(res => {
+        let updated = res.data;
+        if (currentSheet && res.data.hojas_data && res.data.hojas_data[currentSheet]) {
+          const sheetData = res.data.hojas_data[currentSheet];
+          updated = {
+            ...res.data,
+            hoja_actual: currentSheet,
+            celdas: sheetData.celdas || [],
+            estructura_dias: sheetData.estructura_dias || [],
+            estructura_horas: sheetData.estructura_horas || [],
+            excel_preview: sheetData.excel_preview || [],
+          };
+          if (lastUpdate.sheet === currentSheet) {
+            loadSheetHtml(currentSheet);
+          }
+        }
+        setScheduleData(updated);
+      }).catch(err => console.error("Error syncing remote update", err));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteUpdates]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -425,6 +495,21 @@ const Dashboard = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* PRESENCIA VISUAL */}
+          {presence && presence.length > 0 && (
+            <div className="flex items-center mr-4" title="Usuarios editando este horario">
+              {presence.map(user => (
+                <div
+                  key={user}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold border-2 border-white -ml-2 shadow-sm"
+                  style={{ backgroundColor: stringToColor(user) }}
+                  title={user === username ? `${user} (Tú)` : user}
+                >
+                  {getInitials(user)}
+                </div>
+              ))}
+            </div>
+          )}
           <GlobalSearch onNavigate={handleNavigateFromSearch} />
           <Button
             variant={selectionMode ? 'default' : 'outline'}
@@ -508,7 +593,17 @@ const Dashboard = () => {
                     className="gap-2"
                     data-testid={`tab-${hoja}`}
                   >
-                    <FileText className="w-4 h-4" />
+                    {isSheetLockedByOther(hoja) ? (
+                      <button
+                        title={`Bloqueado por ${locks[hoja]}. Doble clic para FORZAR DESBLOQUEO (Admin)`}
+                        onDoubleClick={(e) => { e.stopPropagation(); forceUnlock(hoja); toast.success('Forzando desbloqueo...'); }}
+                        className="p-0 border-0 bg-transparent flex items-center justify-center cursor-pointer hover:bg-slate-100 rounded"
+                      >
+                        <Lock className="w-4 h-4 text-amber-500" />
+                      </button>
+                    ) : (
+                      <FileText className="w-4 h-4" />
+                    )}
                     {hoja}
                   </TabsTrigger>
                 ))}
@@ -570,6 +665,15 @@ const Dashboard = () => {
         )}
       </div>
     </div>
+  );
+};
+
+const Dashboard = () => {
+  const { scheduleId } = useParams();
+  return (
+    <CollabProvider scheduleId={scheduleId}>
+      <DashboardInner />
+    </CollabProvider>
   );
 };
 

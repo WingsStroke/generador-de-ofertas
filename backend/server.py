@@ -15,6 +15,9 @@ from routers.programs import router as programs_router
 from routers.teachers import router as teachers_router
 from routers.upload import router as upload_router
 from routers.schedules import router as schedules_router
+from routers.collab import router as collab_router
+from routers.auth import router as auth_router
+from database import init_db, close_db
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,6 +46,8 @@ app.include_router(programs_router, prefix="/api")
 app.include_router(teachers_router, prefix="/api")
 app.include_router(upload_router, prefix="/api")
 app.include_router(schedules_router, prefix="/api")
+app.include_router(collab_router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
 
 @app.get("/api/")
 async def root():
@@ -51,10 +56,12 @@ async def root():
 
 @app.on_event("startup")
 async def startup_event():
+    await init_db()
     storage.start_cleanup()
     logger.info("Storage cleanup task iniciado")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    await close_db()
     await storage.close()
     logger.info("Storage cerrado correctamente")

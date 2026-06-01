@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { useSchedule } from '../context/ScheduleContext';
 import { useHistory } from '../context/HistoryContext';
+import { useCollab } from '../context/CollabContext';
 import BlockEditor from './BlockEditor';
 import MultiBlockEditor from './MultiBlockEditor';
 import NewBlockDialog from './NewBlockDialog';
@@ -11,8 +12,8 @@ import { Check, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import '@/App.css';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+const API = BACKEND_URL ? `${BACKEND_URL}/api` : '/api';
 
 const ScheduleGrid = () => {
   const { scheduleId } = useParams();
@@ -31,8 +32,12 @@ const ScheduleGrid = () => {
   const [newBlockSlot, setNewBlockSlot] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [expandedCells, setExpandedCells] = useState(new Set());
+  const { isSheetLockedByOther, locks } = useCollab();
 
   if (!scheduleData) return null;
+
+  const currentSheet = scheduleData.hoja_actual;
+  const isLocked = currentSheet ? isSheetLockedByOther(currentSheet) : false;
 
   const { estructura_dias, estructura_horas, celdas } = scheduleData;
 
@@ -60,6 +65,11 @@ const ScheduleGrid = () => {
       return;
     }
 
+    if (isLocked) {
+      toast.error(`La hoja está bloqueada por ${locks[currentSheet]}`);
+      return;
+    }
+
     if (selectionMode) {
       if (block._ghost) return; // Ghosts no participan en selección múltiple
       toggleBlockSelection(block.id);
@@ -84,6 +94,10 @@ const ScheduleGrid = () => {
   const isCellExpanded = (cellId) => expandedCells.has(cellId);
 
   const onDragStart = () => {
+    if (isLocked) {
+      toast.error(`La hoja está bloqueada por ${locks[currentSheet]}`);
+      return;
+    }
     setIsDragging(true);
   };
 
@@ -350,7 +364,7 @@ const ScheduleGrid = () => {
                                 </button>
                               )}
 
-                              {isEmpty && !selectionMode && (
+                              {isEmpty && !selectionMode && !isLocked && (
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();

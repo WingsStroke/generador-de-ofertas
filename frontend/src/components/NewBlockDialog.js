@@ -17,8 +17,8 @@ import { useSchedule } from '../context/ScheduleContext';
 import { useHistory } from '../context/HistoryContext';
 import { Search, Plus } from 'lucide-react';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+const API = BACKEND_URL ? `${BACKEND_URL}/api` : '/api';
 
 const NewBlockDialog = ({ cellSlot, onClose }) => {
   const { scheduleId } = useParams();

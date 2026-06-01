@@ -6,6 +6,9 @@ import { Toaster } from './components/ui/sonner';
 import Upload from './pages/Upload';
 import Dashboard from './pages/Dashboard';
 import Teachers from './pages/Teachers';
+import Login from './pages/Login';
+import { AuthProvider } from './context/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
 import '@/App.css';
 
 function App() {
@@ -14,11 +17,14 @@ function App() {
       <HistoryProvider>
         <div className="App">
           <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Upload />} />
-              <Route path="/dashboard/:scheduleId" element={<Dashboard />} />
-              <Route path="/teachers" element={<Teachers />} />
-            </Routes>
+            <AuthProvider>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
+                <Route path="/dashboard/:scheduleId" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                <Route path="/teachers" element={<ProtectedRoute><Teachers /></ProtectedRoute>} />
+              </Routes>
+            </AuthProvider>
           </BrowserRouter>
           <Toaster position="bottom-right" />
         </div>
