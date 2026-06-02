@@ -25,8 +25,26 @@ const Upload = () => {
   const [selectedProgram, setSelectedProgram] = useState('ingenieria_de_sistemas');
   const [isDragOverXlsx, setIsDragOverXlsx] = useState(false);
   const [isDragOverJson, setIsDragOverJson] = useState(false);
+  const [activeSchedules, setActiveSchedules] = useState([]);
   const navigate = useNavigate();
   const { setExcelHtmlBySheet } = useSchedule();
+
+  // Fetch active schedules periodically
+  useEffect(() => {
+    const fetchActiveSchedules = async () => {
+      try {
+        const response = await axios.get(`${API}/collab/active`);
+        setActiveSchedules(response.data);
+      } catch (error) {
+        console.error('Error fetching active schedules:', error);
+      }
+    };
+    
+    fetchActiveSchedules();
+    const interval = setInterval(fetchActiveSchedules, 5000); // Poll every 5 seconds
+    
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const prevent = (e) => e.preventDefault();
@@ -382,6 +400,52 @@ const Upload = () => {
               </div>
             )}
           </div>
+
+          {/* Archivos en edición - Sección en vivo */}
+          {activeSchedules.length > 0 && (
+            <div className="mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="flex items-center gap-2 mb-4 px-2">
+                <div className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                </div>
+                <h2 className="text-lg font-semibold text-slate-800">Archivos en edición en este momento</h2>
+              </div>
+              
+              <div className="space-y-3">
+                {activeSchedules.map((schedule) => (
+                  <div key={schedule.schedule_id} className="bg-white rounded-lg p-5 shadow-sm border border-emerald-100 hover:border-emerald-300 hover:shadow-md transition-all group flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-start sm:items-center gap-4">
+                      <div className="bg-emerald-50 p-3 rounded-full text-emerald-600">
+                        {schedule.nombre_archivo?.toLowerCase().endsWith('.pdf') ? <FileText className="w-6 h-6" /> : <FileSpreadsheet className="w-6 h-6" />}
+                      </div>
+                      <div>
+                        <h3 className="font-medium text-slate-900 truncate max-w-[200px] sm:max-w-xs">{schedule.nombre_archivo}</h3>
+                        <div className="flex items-center gap-2 text-sm text-slate-500 mt-1">
+                          <GraduationCap className="w-4 h-4" />
+                          <span className="truncate max-w-[150px]">{schedule.programa_nombre}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-0 pt-3 sm:pt-0 border-slate-100">
+                      <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-full text-xs font-medium border border-emerald-200" title={`Usuarios: ${schedule.usuarios_activos.join(', ')}`}>
+                        <Users className="w-4 h-4" />
+                        <span>{schedule.usuarios_activos.length} {schedule.usuarios_activos.length === 1 ? 'usuario' : 'usuarios'}</span>
+                      </div>
+                      
+                      <Link to={`/dashboard/${schedule.schedule_id}`}>
+                        <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all group-hover:scale-105" size="sm">
+                          Unirse a la edición
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </div>

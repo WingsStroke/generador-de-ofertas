@@ -2,9 +2,33 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 import logging
 from utils.collab_manager import manager
 from utils.auth_helper import decode_access_token
+from storage import storage
 
 router = APIRouter(tags=["Collaboration"])
 logger = logging.getLogger(__name__)
+
+@router.get("/collab/active")
+async def get_active_sessions():
+    """Retorna una lista de las sesiones colaborativas activas en este momento."""
+    active_schedules = []
+    
+    # Iterate over a copy of the keys to avoid RuntimeError if dict changes
+    for schedule_id in list(manager.active_sessions.keys()):
+        presence = await manager.get_presence(schedule_id)
+        if not presence:
+            continue
+            
+        schedule = await storage.get(schedule_id)
+        if schedule:
+            active_schedules.append({
+                "schedule_id": schedule_id,
+                "nombre_archivo": schedule.get("nombre_archivo", "Desconocido"),
+                "programa_nombre": schedule.get("programa_nombre", "Desconocido"),
+                "fecha_procesamiento": schedule.get("fecha_procesamiento", ""),
+                "usuarios_activos": presence
+            })
+            
+    return active_schedules
 
 @router.websocket("/ws/collab/{schedule_id}")
 async def collab_endpoint(websocket: WebSocket, schedule_id: str, token: str = Query(...)):
