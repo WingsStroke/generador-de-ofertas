@@ -139,7 +139,7 @@ async def collab_endpoint(websocket: WebSocket, schedule_id: str, token: str = Q
     except Exception as e:
         logger.warning(f"WebSocket error for {username} on {schedule_id}: {str(e)}")
     finally:
-        freed_sheets = await manager.disconnect(schedule_id, username)
+        freed_sheets = await manager.disconnect(schedule_id, username, websocket)
         
         # Notify others that this user left
         presence = await manager.get_presence(schedule_id)

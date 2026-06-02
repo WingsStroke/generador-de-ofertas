@@ -4,8 +4,8 @@ from fastapi import WebSocket
 
 class CollaborationManager:
     def __init__(self):
-        # Dict[schedule_id, Dict[username, WebSocket]]
-        self.active_sessions: Dict[str, Dict[str, WebSocket]] = {}
+        # Dict[schedule_id, Dict[username, List[WebSocket]]]
+        self.active_sessions: Dict[str, Dict[str, List[WebSocket]]] = {}
         
         # Dict[schedule_id, Dict[sheet_name, username]]
         self.locks: Dict[str, Dict[str, str]] = {}
@@ -19,30 +19,29 @@ class CollaborationManager:
                 self.active_sessions[schedule_id] = {}
                 self.locks[schedule_id] = {}
                 
-            # If the user already had a connection, close the old one
-            if username in self.active_sessions[schedule_id]:
-                old_ws = self.active_sessions[schedule_id][username]
-                try:
-                    await old_ws.send_json({"action": "error", "message": "Conectado desde otra pestaña."})
-                    await old_ws.close()
-                except Exception:
-                    pass
+            if username not in self.active_sessions[schedule_id]:
+                self.active_sessions[schedule_id][username] = []
                     
-            self.active_sessions[schedule_id][username] = websocket
+            self.active_sessions[schedule_id][username].append(websocket)
             
-    async def disconnect(self, schedule_id: str, username: str):
+    async def disconnect(self, schedule_id: str, username: str, websocket: WebSocket = None):
         async with self._mutex:
             locks_to_free = []
             if schedule_id in self.active_sessions:
                 if username in self.active_sessions[schedule_id]:
-                    del self.active_sessions[schedule_id][username]
-                
-                # Free locks held by this user
-                if schedule_id in self.locks:
-                    for sheet, owner in list(self.locks[schedule_id].items()):
-                        if owner == username:
-                            del self.locks[schedule_id][sheet]
-                            locks_to_free.append(sheet)
+                    if websocket and websocket in self.active_sessions[schedule_id][username]:
+                        self.active_sessions[schedule_id][username].remove(websocket)
+                    
+                    # If no more websockets for this user, completely remove them and free their locks
+                    if not self.active_sessions[schedule_id][username]:
+                        del self.active_sessions[schedule_id][username]
+                        
+                        # Free locks held by this user
+                        if schedule_id in self.locks:
+                            for sheet, owner in list(self.locks[schedule_id].items()):
+                                if owner == username:
+                                    del self.locks[schedule_id][sheet]
+                                    locks_to_free.append(sheet)
                 
                 # Cleanup empty sessions to prevent memory leaks
                 if not self.active_sessions[schedule_id]:
@@ -56,21 +55,22 @@ class CollaborationManager:
         if schedule_id not in self.active_sessions:
             return
             
-        disconnected_users = []
-        # Clone the dict to avoid RuntimeError if changed during iteration
+        disconnected_ws = []
+        # Clone the dict to avoid RuntimeError
         connections = dict(self.active_sessions[schedule_id])
         
-        for username, ws in connections.items():
+        for username, ws_list in connections.items():
             if exclude and username == exclude:
                 continue
-            try:
-                await ws.send_json(message)
-            except Exception:
-                disconnected_users.append(username)
+            for ws in ws_list:
+                try:
+                    await ws.send_json(message)
+                except Exception:
+                    disconnected_ws.append((username, ws))
                 
         # Clean up any that failed
-        for user in disconnected_users:
-            await self.disconnect(schedule_id, user)
+        for user, ws in disconnected_ws:
+            await self.disconnect(schedule_id, user, ws)
 
     async def get_presence(self, schedule_id: str) -> List[str]:
         if schedule_id not in self.active_sessions:
@@ -100,10 +100,6 @@ class CollaborationManager:
             if schedule_id in self.locks:
                 current_owner = self.locks[schedule_id].get(sheet_name)
                 if current_owner == username:
-                    del self.locks[schedule_id][sheet_name]
-                    return True
-                # Allow admin override (for future Fase 3)
-                if username.startswith("Admin-"):
                     del self.locks[schedule_id][sheet_name]
                     return True
             return False
