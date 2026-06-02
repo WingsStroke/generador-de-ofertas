@@ -52,13 +52,17 @@ const DashboardInner = () => {
   const [showDictionary, setShowDictionary] = useState(false);
   
   const { role } = useAuth();
-  const { isConnected, requestLock, isSheetLockedByOther, locks, presence, username, forceUnlock, remoteUpdates, notifyUpdate } = useCollab();
+  const { isConnected, requestLock, releaseLock, isSheetLockedByOther, locks, presence, username, forceUnlock, remoteUpdates, notifyUpdate } = useCollab();
 
   useEffect(() => {
     if (isConnected && currentSheet) {
       requestLock(currentSheet);
+      
+      return () => {
+        releaseLock(currentSheet);
+      };
     }
-  }, [isConnected, currentSheet, requestLock]);
+  }, [isConnected, currentSheet, requestLock, releaseLock]);
 
   // Estado del título editable
   const [editableTitle, setEditableTitle] = useState('');
@@ -596,21 +600,24 @@ const DashboardInner = () => {
                     value={hoja}
                     className="gap-2"
                     data-testid={`tab-${hoja}`}
+                    onContextMenu={(e) => {
+                      if (role === 'admin' && isSheetLockedByOther(hoja)) {
+                        e.preventDefault();
+                        if (window.confirm(`¿Forzar el desbloqueo de la hoja "${hoja}" que está siendo editada por ${locks[hoja]}?`)) {
+                          forceUnlock(hoja);
+                          toast.success('Forzando desbloqueo...');
+                        }
+                      }
+                    }}
                   >
                     {isSheetLockedByOther(hoja) ? (
-                      <button
-                        title={role === 'admin' ? `Bloqueado por ${locks[hoja]}. Doble clic para FORZAR DESBLOQUEO (Admin)` : `Bloqueado por ${locks[hoja]}`}
-                        onDoubleClick={(e) => { 
-                          e.stopPropagation(); 
-                          if(role === 'admin') {
-                            forceUnlock(hoja); 
-                            toast.success('Forzando desbloqueo...');
-                          } 
-                        }}
-                        className={`p-0 border-0 bg-transparent flex items-center justify-center ${role === 'admin' ? 'cursor-pointer hover:bg-slate-100' : 'cursor-default'} rounded`}
+                      <div
+                        title={`Bloqueado por ${locks[hoja]}${role === 'admin' ? ' - Clic derecho para forzar desbloqueo' : ''}`}
+                        className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm ring-1 ring-white"
+                        style={{ backgroundColor: stringToColor(locks[hoja]) }}
                       >
-                        <Lock className="w-4 h-4 text-amber-500" />
-                      </button>
+                        {getInitials(locks[hoja])}
+                      </div>
                     ) : (
                       <FileText className="w-4 h-4" />
                     )}
