@@ -107,3 +107,5 @@ backend/*.db
 /test_result.md
 /design_guidelines.json
 /DEPLOY.md
+
+temp_nginx.conf

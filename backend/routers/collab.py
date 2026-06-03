@@ -36,6 +36,7 @@ async def collab_endpoint(websocket: WebSocket, schedule_id: str, token: str = Q
     
     payload = decode_access_token(token)
     if not payload or not payload.get("sub"):
+        logger.warning(f"Token invalido: {token}")
         await websocket.close(code=4003, reason="Token inválido o expirado")
         return
         

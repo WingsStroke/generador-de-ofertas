@@ -19,6 +19,33 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
 
   useEffect(() => {
+    // Proactively check if the token is already expired
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload.exp * 1000 < Date.now()) {
+          logout();
+          toast.error("Sesión expirada. Por favor, inicia sesión nuevamente.");
+          return;
+        }
+      } catch (e) {
+        // Ignore parsing errors
+      }
+    }
+
+    // Check every minute
+    const interval = setInterval(() => {
+      if (token) {
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          if (payload.exp * 1000 < Date.now()) {
+            logout();
+            toast.error("Sesión expirada. Por favor, inicia sesión nuevamente.");
+          }
+        } catch (e) {}
+      }
+    }, 60000);
+
     // Interceptor para inyectar el token en todas las peticiones
     const requestInterceptor = axios.interceptors.request.use(
       (config) => {
@@ -43,6 +70,7 @@ export const AuthProvider = ({ children }) => {
     );
 
     return () => {
+      clearInterval(interval);
       axios.interceptors.request.eject(requestInterceptor);
       axios.interceptors.response.eject(responseInterceptor);
     };

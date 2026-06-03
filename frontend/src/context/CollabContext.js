@@ -13,7 +13,7 @@ export const useCollab = () => {
 };
 
 export const CollabProvider = ({ scheduleId, children }) => {
-  const { username, token } = useAuth();
+  const { username, token, logout } = useAuth();
 
   const [isConnected, setIsConnected] = useState(false);
   const [presence, setPresence] = useState([]);
@@ -87,9 +87,16 @@ export const CollabProvider = ({ scheduleId, children }) => {
         }
       };
 
-      wsRef.current.onclose = () => {
+      wsRef.current.onclose = (event) => {
         setIsConnected(false);
         if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
+        
+        if (event.code === 4003) {
+          toast.error("Sesión expirada. Por favor, inicia sesión nuevamente.");
+          logout();
+          return;
+        }
+        
         // Intentar reconectar después de 5 segundos
         setTimeout(() => {
           if (scheduleId) connectWs();

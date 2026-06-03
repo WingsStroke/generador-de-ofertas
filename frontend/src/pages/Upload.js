@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
-import { Upload as UploadIcon, FileSpreadsheet, FileText, CheckCircle, GraduationCap, FileJson, AlertCircle, ChevronDown, ChevronUp, Users } from 'lucide-react';
+import { Upload as UploadIcon, FileSpreadsheet, FileText, CheckCircle, GraduationCap, FileJson, AlertCircle, ChevronDown, ChevronUp, Users, LogOut } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Label } from '../components/ui/label';
 import { toast } from 'sonner';
 import { useSchedule } from '../context/ScheduleContext';
+import { useAuth } from '../context/AuthContext';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
 const API = BACKEND_URL ? `${BACKEND_URL}/api` : '/api';
@@ -28,7 +29,7 @@ const Upload = () => {
   const [activeSchedules, setActiveSchedules] = useState([]);
   const navigate = useNavigate();
   const { setExcelHtmlBySheet } = useSchedule();
-
+  const { logout, username } = useAuth();
   // Fetch active schedules periodically
   useEffect(() => {
     const fetchActiveSchedules = async () => {
@@ -207,12 +208,19 @@ const Upload = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex flex-col relative">
       <header className="w-full p-4 flex justify-end">
-        <Link to="/teachers">
-          <Button variant="outline" className="bg-white hover:bg-slate-50 shadow-sm border-slate-200">
-            <Users className="w-4 h-4 mr-2 text-blue-600" />
-            Diccionario de Docentes
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-slate-600 font-medium">Hola, {username}</span>
+          <Link to="/teachers">
+            <Button variant="outline" className="bg-white hover:bg-slate-50 shadow-sm border-slate-200">
+              <Users className="w-4 h-4 mr-2 text-blue-600" />
+              Diccionario de Docentes
+            </Button>
+          </Link>
+          <Button variant="ghost" onClick={logout} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+            <LogOut className="w-4 h-4 mr-2" />
+            Cerrar Sesión
           </Button>
-        </Link>
+        </div>
       </header>
 
       <div className="flex-1 flex items-center justify-center p-6">

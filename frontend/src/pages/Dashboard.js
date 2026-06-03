@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
-import { Download, ArrowLeft, FileText, Undo2, Redo2, MousePointer2, BookOpenCheck, Upload, ExternalLink, Copy, Check, Lock } from 'lucide-react';
+import { Download, ArrowLeft, FileText, Undo2, Redo2, MousePointer2, BookOpenCheck, Upload, ExternalLink, Copy, Check, Lock, LogOut } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { Badge } from '../components/ui/badge';
@@ -51,7 +51,7 @@ const DashboardInner = () => {
   const [currentSheet, setCurrentSheet] = useState(null);
   const [showDictionary, setShowDictionary] = useState(false);
   
-  const { role } = useAuth();
+  const { role, logout } = useAuth();
   const { isConnected, requestLock, releaseLock, isSheetLockedByOther, locks, presence, username, forceUnlock, remoteUpdates, notifyUpdate } = useCollab();
 
   useEffect(() => {
@@ -586,6 +586,16 @@ const DashboardInner = () => {
               Publicar
             </Button>
           )}
+          {/* Botón cerrar sesión */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={logout}
+            title="Cerrar Sesión"
+            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+          >
+            <LogOut className="w-4 h-4" />
+          </Button>
         </div>
       </header>
 
