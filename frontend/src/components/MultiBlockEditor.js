@@ -17,10 +17,20 @@ import { ScrollArea } from './ui/scroll-area';
 import { toast } from 'sonner';
 import { useSchedule } from '../context/ScheduleContext';
 import { useHistory } from '../context/HistoryContext';
-import { Search, X, Trash2 } from 'lucide-react';
+import { Search, X, Trash2, Sparkles } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
 const API = BACKEND_URL ? `${BACKEND_URL}/api` : '/api';
+
+const cleanNoise = (text) => {
+  if (!text) return '';
+  return text
+    .replace(/\r?\n/g, ' ')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s\-_,;/|]+|[\s\-_,;/|]+$/g, '')
+    .trim();
+};
 
 const MultiBlockEditor = ({ onClose }) => {
   const { scheduleId } = useParams();
@@ -293,8 +303,28 @@ const MultiBlockEditor = ({ onClose }) => {
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto" data-testid="multi-edit-dialog">
         <DialogHeader>
-          <DialogTitle>
-            Edición múltiple ({selectedBlocks.length} bloque{selectedBlocks.length !== 1 ? 's' : ''})
+          <DialogTitle className="flex items-center justify-between">
+            <span>Edición múltiple ({selectedBlocks.length} bloque{selectedBlocks.length !== 1 ? 's' : ''})</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs px-2 text-blue-600 hover:text-blue-700 border-blue-200 bg-blue-50/50"
+              onClick={() => {
+                setFormData(prev => ({
+                  materia: cleanNoise(prev.materia),
+                  materia_id: prev.materia_id,
+                  grupo: cleanNoise(prev.grupo),
+                  docente: cleanNoise(prev.docente),
+                  aula: cleanNoise(prev.aula)
+                }));
+                toast.success("Campos normalizados con éxito");
+              }}
+              title="Limpiar ruido de todos los campos"
+            >
+              <Sparkles className="w-3.5 h-3.5 mr-1" />
+              Limpiar ruido
+            </Button>
           </DialogTitle>
           <DialogDescription>
             Solo se aplicarán los campos que rellenes. Los campos vacíos quedan intactos en cada bloque.
@@ -344,6 +374,12 @@ const MultiBlockEditor = ({ onClose }) => {
                 value={formData.materia}
                 onChange={(e) => handleChange('materia', e.target.value)}
                 onFocus={() => formData.materia.length >= 2 && setShowSuggestions(true)}
+                onBlur={(e) => {
+                  const cleaned = cleanNoise(e.target.value);
+                  if (cleaned !== e.target.value) {
+                    handleChange('materia', cleaned);
+                  }
+                }}
                 placeholder="Buscar materia..."
                 data-testid="multi-materia-input"
               />
@@ -381,6 +417,12 @@ const MultiBlockEditor = ({ onClose }) => {
                 id="me-grupo"
                 value={formData.grupo}
                 onChange={(e) => handleChange('grupo', e.target.value)}
+                onBlur={(e) => {
+                  const cleaned = cleanNoise(e.target.value);
+                  if (cleaned !== e.target.value) {
+                    handleChange('grupo', cleaned);
+                  }
+                }}
                 placeholder="Ej: A1, B2"
                 data-testid="multi-grupo-input"
               />
@@ -391,6 +433,12 @@ const MultiBlockEditor = ({ onClose }) => {
                 id="me-docente"
                 value={formData.docente}
                 onChange={(e) => handleChange('docente', e.target.value)}
+                onBlur={(e) => {
+                  const cleaned = cleanNoise(e.target.value);
+                  if (cleaned !== e.target.value) {
+                    handleChange('docente', cleaned);
+                  }
+                }}
                 placeholder="Nombre del docente"
                 data-testid="multi-docente-input"
               />
@@ -403,6 +451,12 @@ const MultiBlockEditor = ({ onClose }) => {
               id="me-aula"
               value={formData.aula}
               onChange={(e) => handleChange('aula', e.target.value)}
+              onBlur={(e) => {
+                const cleaned = cleanNoise(e.target.value);
+                if (cleaned !== e.target.value) {
+                  handleChange('aula', cleaned);
+                }
+              }}
               placeholder="Laboratorio, salón, etc."
               data-testid="multi-aula-input"
             />

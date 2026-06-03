@@ -58,7 +58,9 @@ class ScheduleProcessor:
                         merged_index[key] = len(processed_cells)
                         processed_cells.append(processed_cell)
 
-                    for block in processed_cell.bloques:
+                processed_cells = self._deduplicate_blocks(processed_cells)
+                for cell in processed_cells:
+                    for block in cell.bloques:
                         total_confidence += block.nivel_confianza
                         total_blocks += 1
                 
@@ -148,7 +150,9 @@ class ScheduleProcessor:
                         merged_index[key] = len(processed_cells)
                         processed_cells.append(processed_cell)
 
-                    for block in processed_cell.bloques:
+                processed_cells = self._deduplicate_blocks(processed_cells)
+                for cell in processed_cells:
+                    for block in cell.bloques:
                         total_confidence += block.nivel_confianza
                         total_blocks += 1
                 
@@ -195,6 +199,24 @@ class ScheduleProcessor:
         finally:
             reader.close()
     
+    def _deduplicate_blocks(self, cells: List[ScheduleCell]) -> List[ScheduleCell]:
+        """Elimina bloques duplicados exactos dentro de cada celda."""
+        for cell in cells:
+            seen = set()
+            unique_blocks = []
+            for block in cell.bloques:
+                key = (
+                    (block.materia or "").strip().lower(),
+                    (block.grupo or "").strip().lower(),
+                    (block.docente or "").strip().lower(),
+                    (block.aula or "").strip().lower(),
+                )
+                if key not in seen:
+                    seen.add(key)
+                    unique_blocks.append(block)
+            cell.bloques = unique_blocks
+        return cells
+
     def _process_cell(self, cell_data: Dict, teachers_list: List[str] = None) -> ScheduleCell:
         """Procesa una celda individual del horario"""
         texto = cell_data["texto"]

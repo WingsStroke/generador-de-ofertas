@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
-import { Download, ArrowLeft, FileText, Undo2, Redo2, MousePointer2, BookOpenCheck, Upload, ExternalLink, Copy, Check, Lock, LogOut } from 'lucide-react';
+import { Download, ArrowLeft, FileText, Undo2, Redo2, MousePointer2, BookOpenCheck, Upload, ExternalLink, Copy, Check, Lock, LogOut, AlertTriangle, AlertCircle, ChevronLeft, ChevronRight, Play, ShieldAlert, Sparkles, CheckCircle2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { Badge } from '../components/ui/badge';
@@ -45,14 +45,187 @@ const getInitials = (name) => {
 const DashboardInner = () => {
   const { scheduleId } = useParams();
   const { scheduleData, setScheduleData, setSubjects, selectionMode, setSelectionMode,
-    selectedBlockIds, exitSelectionMode, setExcelHtmlBySheet, excelHtmlBySheet, setLoadingHtmlBySheet } = useSchedule();
+    selectedBlockIds, exitSelectionMode, setExcelHtmlBySheet, excelHtmlBySheet, setLoadingHtmlBySheet, setEditingBlock } = useSchedule();
   const { canUndo, canRedo, hasUnsavedChanges, undo, redo } = useHistory();
   const [loading, setLoading] = useState(true);
   const [currentSheet, setCurrentSheet] = useState(null);
+  const currentSheetRef = useRef(currentSheet);
+  const scheduleDataRef = useRef(scheduleData);
+
+  useEffect(() => {
+    currentSheetRef.current = currentSheet;
+  }, [currentSheet]);
+
+  useEffect(() => {
+    scheduleDataRef.current = scheduleData;
+  }, [scheduleData]);
+
   const [showDictionary, setShowDictionary] = useState(false);
   
   const { role, logout } = useAuth();
   const { isConnected, requestLock, releaseLock, isSheetLockedByOther, locks, presence, username, forceUnlock, remoteUpdates, notifyUpdate } = useCollab();
+
+  // Linter & Triage States
+  const [lintResults, setLintResults] = useState({ errors: [], warnings: [], total_errors: 0, total_warnings: 0 });
+  const [ignoredProblemIds, setIgnoredProblemIds] = useState(new Set());
+  const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
+  const [lintLoading, setLintLoading] = useState(false);
+  const [triageMinimized, setTriageMinimized] = useState(false);
+
+  const loadSheetHtml = useCallback(async (sheetName) => {
+    if (!scheduleId || !sheetName) return;
+    try {
+      setLoadingHtmlBySheet((prev) => ({ ...prev, [sheetName]: true }));
+      const encodedSheet = encodeURIComponent(sheetName);
+      const res = await axios.get(`${API}/schedule/${scheduleId}/sheet-preview/${encodedSheet}`, {
+        responseType: 'text',
+      });
+      setExcelHtmlBySheet((prev) => ({ ...prev, [sheetName]: res.data }));
+    } catch (err) {
+      console.warn(`Vista HTML no disponible para hoja "${sheetName}":`, err?.response?.status);
+    } finally {
+      setLoadingHtmlBySheet((prev) => ({ ...prev, [sheetName]: false }));
+    }
+  }, [scheduleId, setExcelHtmlBySheet, setLoadingHtmlBySheet]);
+
+  const loadSheetData = useCallback((sheetName) => {
+    console.log("[LINTER-DEBUG] loadSheetData called with sheetName:", sheetName);
+    const latestScheduleData = scheduleDataRef.current;
+    if (!latestScheduleData || !latestScheduleData.hojas_data) {
+      console.log("[LINTER-DEBUG] loadSheetData: scheduleData or hojas_data is missing", { latestScheduleData });
+      return;
+    }
+    
+    const sheetData = latestScheduleData.hojas_data[sheetName];
+    if (sheetData) {
+      console.log("[LINTER-DEBUG] loadSheetData: Found sheetData for", sheetName);
+      // Pre-marcar como cargando ANTES de setScheduleData para evitar
+      // el flash del fallback sin estilo mientras se descarga el HTML.
+      if (!excelHtmlBySheet?.[sheetName]) {
+        setLoadingHtmlBySheet((prev) => ({ ...prev, [sheetName]: true }));
+      }
+      const updatedSchedule = {
+        ...latestScheduleData,
+        hoja_actual: sheetName,
+        celdas: sheetData.celdas || [],
+        estructura_dias: sheetData.estructura_dias || [],
+        estructura_horas: sheetData.estructura_horas || [],
+        excel_preview: sheetData.excel_preview || [],
+      };
+      setScheduleData(updatedSchedule);
+      setCurrentSheet(sheetName);
+      // Cargar HTML de la hoja si aún no está cargado
+      loadSheetHtml(sheetName);
+    } else {
+      console.warn("[LINTER-DEBUG] loadSheetData: Sheet NOT found in scheduleData.hojas_data. Available sheets:", Object.keys(latestScheduleData.hojas_data));
+    }
+  }, [excelHtmlBySheet, setLoadingHtmlBySheet, setScheduleData, loadSheetHtml]);
+
+  const fetchLint = useCallback(async () => {
+    if (!scheduleId) return;
+    try {
+      setLintLoading(true);
+      const res = await axios.get(`${API}/schedule/${scheduleId}/lint`);
+      setLintResults(res.data);
+    } catch (err) {
+      console.error("Error running linter:", err);
+    } finally {
+      setLintLoading(false);
+    }
+  }, [scheduleId]);
+
+  useEffect(() => {
+    fetchLint();
+  }, [scheduleData, fetchLint]);
+
+  const allProblems = useMemo(() => {
+    const list = [...(lintResults.errors || []), ...(lintResults.warnings || [])];
+    return list.filter(p => !ignoredProblemIds.has(p.id));
+  }, [lintResults, ignoredProblemIds]);
+
+  const { filteredErrorsCount, filteredWarningsCount } = useMemo(() => {
+    const errors = (lintResults.errors || []).filter(p => !ignoredProblemIds.has(p.id));
+    const warnings = (lintResults.warnings || []).filter(p => !ignoredProblemIds.has(p.id));
+    return {
+      filteredErrorsCount: errors.length,
+      filteredWarningsCount: warnings.length
+    };
+  }, [lintResults, ignoredProblemIds]);
+
+  const jumpToProblem = useCallback((problem) => {
+    if (!problem) return;
+    const latestCurrentSheet = currentSheetRef.current;
+    
+    console.log("[LINTER-DEBUG] jumpToProblem triggered for problem:", problem);
+    console.log("[LINTER-DEBUG] currentSheet:", latestCurrentSheet, "problem.sheet:", problem.sheet);
+    
+    // 1. Navegar a la hoja correcta si es distinta
+    if (latestCurrentSheet !== problem.sheet) {
+      console.log("[LINTER-DEBUG] currentSheet !== problem.sheet. Calling loadSheetData...");
+      loadSheetData(problem.sheet);
+    } else {
+      console.log("[LINTER-DEBUG] Already on the target sheet.");
+    }
+    
+    // 2. Hacer scroll y resaltar la celda en la tabla
+    setTimeout(() => {
+      console.log("[LINTER-DEBUG] Running timeout logic. Searching cell...");
+      const cell = document.querySelector(`[data-testid="schedule-cell-${problem.dia}-${problem.hora_inicio}"]`);
+      if (cell) {
+        console.log("[LINTER-DEBUG] Found cell element in DOM, scrolling and highlighting.");
+        cell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        cell.classList.add('ring-4', 'ring-amber-500', 'ring-offset-2', 'animate-pulse');
+        setTimeout(() => {
+          cell.classList.remove('ring-4', 'ring-amber-500', 'ring-offset-2', 'animate-pulse');
+        }, 4000);
+      } else {
+        console.warn("[LINTER-DEBUG] Cell element not found in DOM for", `schedule-cell-${problem.dia}-${problem.hora_inicio}`);
+      }
+    }, 350);
+  }, [loadSheetData]);
+
+  const handleNextProblem = useCallback(() => {
+    if (allProblems.length === 0) return;
+    setCurrentProblemIndex(prev => (prev + 1) % allProblems.length);
+  }, [allProblems]);
+
+  const handlePrevProblem = useCallback(() => {
+    if (allProblems.length === 0) return;
+    setCurrentProblemIndex(prev => (prev - 1 + allProblems.length) % allProblems.length);
+  }, [allProblems]);
+
+  const handleIgnoreProblem = useCallback(() => {
+    const currentProblem = allProblems[currentProblemIndex];
+    if (!currentProblem) return;
+    
+    setIgnoredProblemIds(prev => {
+      const next = new Set(prev);
+      next.add(currentProblem.id);
+      return next;
+    });
+    
+    toast.info("Problema ignorado");
+    
+    setCurrentProblemIndex(prev => {
+      const newLength = allProblems.length - 1;
+      if (newLength <= 0) return 0;
+      if (prev >= newLength) return newLength - 1;
+      return prev;
+    });
+  }, [allProblems, currentProblemIndex]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.altKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        if (allProblems.length > 0) {
+          jumpToProblem(allProblems[currentProblemIndex]);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [allProblems, currentProblemIndex, jumpToProblem]);
 
   useEffect(() => {
     if (isConnected && currentSheet) {
@@ -78,21 +251,7 @@ const DashboardInner = () => {
   const [urlCopied, setUrlCopied] = useState(false);
 
 
-  const loadSheetHtml = useCallback(async (sheetName) => {
-    if (!scheduleId || !sheetName) return;
-    try {
-      setLoadingHtmlBySheet((prev) => ({ ...prev, [sheetName]: true }));
-      const encodedSheet = encodeURIComponent(sheetName);
-      const res = await axios.get(`${API}/schedule/${scheduleId}/sheet-preview/${encodedSheet}`, {
-        responseType: 'text',
-      });
-      setExcelHtmlBySheet((prev) => ({ ...prev, [sheetName]: res.data }));
-    } catch (err) {
-      console.warn(`Vista HTML no disponible para hoja "${sheetName}":`, err?.response?.status);
-    } finally {
-      setLoadingHtmlBySheet((prev) => ({ ...prev, [sheetName]: false }));
-    }
-  }, [scheduleId, setExcelHtmlBySheet, setLoadingHtmlBySheet]);
+
 
   // Interceptar mutaciones para notificar a los demás usuarios
   useEffect(() => {
@@ -131,7 +290,7 @@ const DashboardInner = () => {
             estructura_horas: sheetData.estructura_horas || [],
             excel_preview: sheetData.excel_preview || [],
           };
-          if (lastUpdate.sheet === currentSheet) {
+          if (lastUpdate.sheet === 'all' || lastUpdate.sheet === currentSheet) {
             loadSheetHtml(currentSheet);
           }
         }
@@ -191,30 +350,7 @@ const DashboardInner = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scheduleId, setScheduleData, setSubjects, loadSheetHtml]);
 
-  const loadSheetData = (sheetName) => {
-    if (!scheduleData || !scheduleData.hojas_data) return;
-    
-    const sheetData = scheduleData.hojas_data[sheetName];
-    if (sheetData) {
-      // Pre-marcar como cargando ANTES de setScheduleData para evitar
-      // el flash del fallback sin estilo mientras se descarga el HTML.
-      if (!excelHtmlBySheet?.[sheetName]) {
-        setLoadingHtmlBySheet((prev) => ({ ...prev, [sheetName]: true }));
-      }
-      const updatedSchedule = {
-        ...scheduleData,
-        hoja_actual: sheetName,
-        celdas: sheetData.celdas || [],
-        estructura_dias: sheetData.estructura_dias || [],
-        estructura_horas: sheetData.estructura_horas || [],
-        excel_preview: sheetData.excel_preview || [],
-      };
-      setScheduleData(updatedSchedule);
-      setCurrentSheet(sheetName);
-      // Cargar HTML de la hoja si aún no está cargado
-      loadSheetHtml(sheetName);
-    }
-  };
+
 
   const handleNavigateFromSearch = (hoja, dia, hora_inicio) => {
     loadSheetData(hoja);
@@ -229,6 +365,36 @@ const DashboardInner = () => {
       }
     }, 300);
   };
+
+  const handleReplaceSuccess = useCallback((affectedSheets) => {
+    // 1. Recargar datos del horario
+    axios.get(`${API}/schedule/${scheduleId}`).then(res => {
+      let updated = res.data;
+      if (currentSheet && res.data.hojas_data && res.data.hojas_data[currentSheet]) {
+        const sheetData = res.data.hojas_data[currentSheet];
+        updated = {
+          ...res.data,
+          hoja_actual: currentSheet,
+          celdas: sheetData.celdas || [],
+          estructura_dias: sheetData.estructura_dias || [],
+          estructura_horas: sheetData.estructura_horas || [],
+          excel_preview: sheetData.excel_preview || [],
+        };
+        // 2. Recargar HTML si la hoja actual fue afectada
+        if (affectedSheets.includes(currentSheet) || affectedSheets.includes('all')) {
+          loadSheetHtml(currentSheet);
+        }
+      }
+      setScheduleData(updated);
+      toast.success("Horario sincronizado con éxito.");
+    }).catch(err => {
+      console.error("Error al sincronizar tras reemplazo:", err);
+      toast.error("Error al sincronizar los cambios de reemplazo");
+    });
+
+    // 3. Notificar a otros colaboradores
+    notifyUpdate('all');
+  }, [scheduleId, currentSheet, loadSheetHtml, setScheduleData, notifyUpdate]);
 
   const handleExport = async () => {
     // Usa el título editable como nombre de archivo
@@ -516,7 +682,11 @@ const DashboardInner = () => {
               ))}
             </div>
           )}
-          <GlobalSearch onNavigate={handleNavigateFromSearch} />
+          <GlobalSearch 
+            onNavigate={handleNavigateFromSearch} 
+            currentSheet={currentSheet} 
+            onReplaceSuccess={handleReplaceSuccess} 
+          />
           <Button
             variant={selectionMode ? 'default' : 'outline'}
             size="sm"
@@ -691,6 +861,125 @@ const DashboardInner = () => {
           </>
         )}
       </div>
+
+      {/* Panel Flotante de Triage */}
+      {triageMinimized ? (
+        <div 
+          onClick={() => setTriageMinimized(false)}
+          className="fixed bottom-6 right-6 z-40 bg-white border border-slate-200 shadow-xl rounded-full px-4 py-2.5 cursor-pointer flex items-center gap-2 hover:bg-slate-50 transition-all duration-200 ring-2 ring-blue-500/20"
+        >
+          <Sparkles className="w-4 h-4 text-blue-600" />
+          <span className="text-xs font-semibold text-slate-700">Triage ({allProblems.length})</span>
+        </div>
+      ) : (
+        <div className="fixed bottom-6 right-6 z-40 bg-white/95 backdrop-blur border border-slate-200 shadow-2xl rounded-2xl p-4 w-80 max-w-sm transition-all duration-300 hover:shadow-slate-200/50 flex flex-col gap-3">
+          <div className="flex items-center justify-between border-b pb-2">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                {allProblems.length > 0 ? (
+                  <>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                  </>
+                ) : (
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                )}
+              </span>
+              <h3 className="font-semibold text-slate-800 text-xs tracking-wide uppercase">Linter Académico</h3>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {filteredErrorsCount > 0 && (
+                <Badge variant="destructive" className="text-[10px] px-1.5 py-0 bg-red-100 text-red-800 hover:bg-red-100 border-red-200">
+                  {filteredErrorsCount} err
+                </Badge>
+              )}
+              {filteredWarningsCount > 0 && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200">
+                  {filteredWarningsCount} adv
+                </Badge>
+              )}
+              <button 
+                onClick={() => setTriageMinimized(true)}
+                className="text-slate-400 hover:text-slate-600 text-xs ml-1 font-bold"
+                title="Minimizar panel"
+              >
+                —
+              </button>
+            </div>
+          </div>
+
+          {allProblems.length > 0 ? (
+            <div className="space-y-3">
+              <div className="min-h-16 flex flex-col justify-center bg-slate-50 border rounded-xl p-3">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  {allProblems[currentProblemIndex]?.type.includes('overlap') ? '🚫 Conflicto de Traslape' : '⚠️ Dato Faltante'}
+                </span>
+                <p className="text-xs text-slate-700 leading-normal font-medium">
+                  {allProblems[currentProblemIndex]?.message}
+                </p>
+                <span className="text-[10px] font-semibold text-blue-600 mt-2 flex items-center gap-1">
+                  <FileText className="w-3.5 h-3.5" /> Hoja: {allProblems[currentProblemIndex]?.sheet}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-slate-500 px-1 font-medium">
+                <span>Problema {currentProblemIndex + 1} de {allProblems.length}</span>
+                <div className="flex gap-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 hover:bg-slate-100"
+                    onClick={handlePrevProblem}
+                    title="Anterior"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 hover:bg-slate-100"
+                    onClick={handleNextProblem}
+                    title="Siguiente"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => jumpToProblem(allProblems[currentProblemIndex])}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs gap-2 py-2.5"
+                  data-testid="triage-jump-btn"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  Ir al Problema
+                  <kbd className="inline-flex items-center gap-0.5 rounded border bg-white/20 px-1 font-mono text-[9px] text-white">
+                    Alt+N
+                  </kbd>
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleIgnoreProblem}
+                  className="px-3 border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-medium"
+                  title="Omitir/Ignorar este problema"
+                  data-testid="triage-ignore-btn"
+                >
+                  Omitir
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-4 flex flex-col items-center gap-2">
+              <CheckCircle2 className="w-8 h-8 text-green-500 animate-pulse" />
+              <div>
+                <p className="text-xs font-semibold text-slate-800">¡Horario impecable!</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Listo para publicar sin advertencias.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

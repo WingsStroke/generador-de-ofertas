@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, HTMLResponse
 from typing import Dict, List, Any, Optional
-from models import BlockUpdate, BulkBlockUpdate, BlockCreate, BlockMove
+from models import BlockUpdate, BulkBlockUpdate, BlockCreate, BlockMove, GlobalReplaceRequest
 from state import limiter, programas_dict
 from storage import storage
 import uuid
@@ -622,4 +622,285 @@ async def move_block(schedule_id: str, move: BlockMove):
         raise HTTPException(status_code=404, detail="Horario no encontrado")
 
     return {"message": "Bloque movido exitosamente", "block_id": move.block_id}
+
+
+@router.post("/schedule/{schedule_id}/replace")
+async def global_replace(schedule_id: str, request: GlobalReplaceRequest):
+    """Busca y reemplaza ocurrencias de un texto en todo el horario (o en la hoja actual)"""
+    import re
+    from datetime import datetime, timezone
+    
+    schedule = await storage.get(schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Horario no encontrado")
+        
+    replaced_count = [0]  # list wrapper so nested function can mutate
+    sheets_affected = set()
+    
+    def get_replaced_value(val: str) -> tuple[str, bool]:
+        if not val or not isinstance(val, str):
+            return val, False
+        
+        is_match = False
+        if request.exact_match:
+            if request.case_sensitive:
+                is_match = (val == request.search_text)
+            else:
+                is_match = (val.lower() == request.search_text.lower())
+        else:
+            if request.case_sensitive:
+                is_match = (request.search_text in val)
+            else:
+                is_match = (request.search_text.lower() in val.lower())
+                
+        if not is_match:
+            return val, False
+            
+        if request.exact_match:
+            return request.replace_text, True
+        else:
+            if request.case_sensitive:
+                return val.replace(request.search_text, request.replace_text), True
+            else:
+                pattern = re.compile(re.escape(request.search_text), re.IGNORECASE)
+                new_val = pattern.sub(request.replace_text, val)
+                return new_val, True
+
+    def do_replace(sched: Dict) -> tuple:
+        hojas_data = sched.get("hojas_data", {})
+        if not hojas_data:
+            hoja_actual = sched.get("hoja_actual", "Hoja 1")
+            hojas_data = {hoja_actual: {"celdas": sched.get("celdas", [])}}
+            sched["hojas_data"] = hojas_data
+            
+        for sheet_name, sheet_info in hojas_data.items():
+            if request.scope == "current" and request.current_sheet and sheet_name != request.current_sheet:
+                continue
+                
+            sheet_affected = False
+            for cell in sheet_info.get("celdas", []):
+                for block in cell.get("bloques", []):
+                    fields_to_check = []
+                    if request.field == "all":
+                        fields_to_check = ["materia", "docente", "aula"]
+                    else:
+                        fields_to_check = [request.field]
+                        
+                    block_updated = False
+                    for f in fields_to_check:
+                        old_val = block.get(f)
+                        if old_val:
+                            new_val, changed = get_replaced_value(old_val)
+                            if changed:
+                                block[f] = new_val
+                                block_updated = True
+                                replaced_count[0] += 1
+                    
+                    if block_updated:
+                        block["estado"] = "confirmed"
+                        block["nivel_confianza"] = 1.0
+                        block["_updated_at"] = datetime.now(timezone.utc).isoformat()
+                        sheet_affected = True
+                        
+            if sheet_affected:
+                sheets_affected.add(sheet_name)
+                
+        # Sincronizar schedule["celdas"] si la hoja activa es una de las afectadas
+        hoja_actual = sched.get("hoja_actual")
+        if hoja_actual and hoja_actual in sheets_affected:
+            for cell in sched.get("celdas", []):
+                for block in cell.get("bloques", []):
+                    fields_to_check = []
+                    if request.field == "all":
+                        fields_to_check = ["materia", "docente", "aula"]
+                    else:
+                        fields_to_check = [request.field]
+                    for f in fields_to_check:
+                        old_val = block.get(f)
+                        if old_val:
+                            new_val, changed = get_replaced_value(old_val)
+                            if changed:
+                                block[f] = new_val
+                                block["estado"] = "confirmed"
+                                block["nivel_confianza"] = 1.0
+                                block["_updated_at"] = datetime.now(timezone.utc).isoformat()
+                                
+        _add_audit_log(
+            sched, 
+            "REEMPLAZO_GLOBAL", 
+            None, 
+            f"Reemplazo global de '{request.search_text}' por '{request.replace_text}' en '{request.field}'. "
+            f"Afecto {len(sheets_affected)} hoja(s) y {replaced_count[0]} bloque(s)."
+        )
+        return sched, {
+            "message": "Reemplazo completado exitosamente",
+            "replaced_count": replaced_count[0],
+            "sheets_affected": list(sheets_affected)
+        }
+
+    return await _atomic_update_with_retry(schedule_id, do_replace)
+
+
+@router.get("/schedule/{schedule_id}/lint")
+async def lint_schedule(schedule_id: str):
+    """Analiza el horario en busca de traslapes y datos faltantes"""
+    schedule = await storage.get(schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Horario no encontrado")
+        
+    occurrences = []
+    hojas_data = schedule.get("hojas_data", {})
+    if not hojas_data:
+        hoja_actual = schedule.get("hoja_actual", "Hoja 1")
+        hojas_data = {hoja_actual: {"celdas": schedule.get("celdas", [])}}
+        
+    for sheet_name, sheet_info in hojas_data.items():
+        for cell in sheet_info.get("celdas", []):
+            dia = cell.get("dia")
+            hora_inicio = cell.get("hora_inicio")
+            hora_fin = cell.get("hora_fin")
+            if not dia or not hora_inicio or not hora_fin:
+                continue
+            for block in cell.get("bloques", []):
+                occurrences.append({
+                    "sheet": sheet_name,
+                    "dia": dia,
+                    "hora_inicio": hora_inicio,
+                    "hora_fin": hora_fin,
+                    "block_id": block.get("id"),
+                    "materia": block.get("materia", ""),
+                    "grupo": block.get("grupo", ""),
+                    "docente": block.get("docente", ""),
+                    "aula": block.get("aula", ""),
+                })
+                
+    errors = []
+    warnings = []
+    
+    # helper for range overlap
+    def ranges_overlap(start1: str, end1: str, start2: str, end2: str) -> bool:
+        return max(start1, start2) < min(end1, end2)
+        
+    # 1. Check for missing data (Warnings)
+    for occ in occurrences:
+        materia = occ["materia"]
+        grupo = occ["grupo"]
+        docente = occ["docente"]
+        aula = occ["aula"]
+        sheet = occ["sheet"]
+        dia = occ["dia"]
+        hora_inicio = occ["hora_inicio"]
+        hora_fin = occ["hora_fin"]
+        block_id = occ["block_id"]
+        
+        dia_label = {"L": "Lunes", "M": "Martes", "X": "Miércoles", "J": "Jueves", "V": "Viernes", "S": "Sábado", "D": "Domingo"}.get(dia, dia)
+        
+        if not materia or not materia.strip():
+            warnings.append({
+                "id": f"missing_materia_{block_id}",
+                "type": "missing_materia",
+                "message": f"Falta el nombre de la materia ({dia_label} {hora_inicio}-{hora_fin})",
+                "sheet": sheet,
+                "dia": dia,
+                "hora_inicio": hora_inicio,
+                "block_id": block_id
+            })
+        if not docente or not docente.strip() or docente.lower() in ["por designar", "sin asignar", "vacante", "a convenir"]:
+            warnings.append({
+                "id": f"missing_docente_{block_id}",
+                "type": "missing_docente",
+                "message": f"Falta el docente para '{materia or '(Sin materia)'}' - Grupo {grupo or '(Sin grupo)'} ({dia_label} {hora_inicio}-{hora_fin})",
+                "sheet": sheet,
+                "dia": dia,
+                "hora_inicio": hora_inicio,
+                "block_id": block_id
+            })
+        if not aula or not aula.strip() or aula.lower() in ["por asignar", "sin asignar"]:
+            warnings.append({
+                "id": f"missing_aula_{block_id}",
+                "type": "missing_aula",
+                "message": f"Falta el aula para '{materia or '(Sin materia)'}' - Grupo {grupo or '(Sin grupo)'} ({dia_label} {hora_inicio}-{hora_fin})",
+                "sheet": sheet,
+                "dia": dia,
+                "hora_inicio": hora_inicio,
+                "block_id": block_id
+            })
+        if not grupo or not grupo.strip():
+            warnings.append({
+                "id": f"missing_grupo_{block_id}",
+                "type": "missing_grupo",
+                "message": f"Falta el grupo para '{materia or '(Sin materia)'}' ({dia_label} {hora_inicio}-{hora_fin})",
+                "sheet": sheet,
+                "dia": dia,
+                "hora_inicio": hora_inicio,
+                "block_id": block_id
+            })
+            
+    # 2. Check for overlaps (Errors)
+    n = len(occurrences)
+    for i in range(n):
+        for j in range(i + 1, n):
+            o1 = occurrences[i]
+            o2 = occurrences[j]
+            
+            if o1["dia"] == o2["dia"] and ranges_overlap(o1["hora_inicio"], o1["hora_fin"], o2["hora_inicio"], o2["hora_fin"]):
+                dia_label = {"L": "Lunes", "M": "Martes", "X": "Miércoles", "J": "Jueves", "V": "Viernes", "S": "Sábado", "D": "Domingo"}.get(o1["dia"], o1["dia"])
+                
+                # Check teacher overlap
+                d1 = o1["docente"].strip() if o1["docente"] else ""
+                d2 = o2["docente"].strip() if o2["docente"] else ""
+                if d1 and d2 and d1.lower() == d2.lower() and d1.lower() not in ["por designar", "sin asignar", "vacante", "a convenir"]:
+                    errors.append({
+                        "id": f"conflict_docente_{o1['block_id']}_{o2['block_id']}",
+                        "type": "docente_overlap",
+                        "message": f"Traslape de docente '{o1['docente']}': '{o1['materia']}' en '{o1['sheet']}' ({dia_label} {o1['hora_inicio']}-{o1['hora_fin']}) y '{o2['materia']}' en '{o2['sheet']}' ({dia_label} {o2['hora_inicio']}-{o2['hora_fin']})",
+                        "sheet": o1["sheet"],
+                        "dia": o1["dia"],
+                        "hora_inicio": o1["hora_inicio"],
+                        "block_id": o1["block_id"],
+                        "related_sheet": o2["sheet"],
+                        "related_block_id": o2["block_id"]
+                    })
+                    
+                # Check classroom overlap
+                a1 = o1["aula"].strip() if o1["aula"] else ""
+                a2 = o2["aula"].strip() if o2["aula"] else ""
+                if a1 and a2 and a1.lower() == a2.lower() and a1.lower() not in ["por asignar", "sin asignar"]:
+                    errors.append({
+                        "id": f"conflict_aula_{o1['block_id']}_{o2['block_id']}",
+                        "type": "aula_overlap",
+                        "message": f"Traslape de aula '{o1['aula']}': '{o1['materia']}' en '{o1['sheet']}' ({dia_label} {o1['hora_inicio']}-{o1['hora_fin']}) y '{o2['materia']}' en '{o2['sheet']}' ({dia_label} {o2['hora_inicio']}-{o2['hora_fin']})",
+                        "sheet": o1["sheet"],
+                        "dia": o1["dia"],
+                        "hora_inicio": o1["hora_inicio"],
+                        "block_id": o1["block_id"],
+                        "related_sheet": o2["sheet"],
+                        "related_block_id": o2["block_id"]
+                    })
+                    
+                # Check group overlap within same sheet
+                if o1["sheet"] == o2["sheet"]:
+                    g1 = o1["grupo"].strip() if o1["grupo"] else ""
+                    g2 = o2["grupo"].strip() if o2["grupo"] else ""
+                    if g1 and g2 and g1.lower() == g2.lower():
+                        errors.append({
+                            "id": f"conflict_grupo_{o1['block_id']}_{o2['block_id']}",
+                            "type": "grupo_overlap",
+                            "message": f"Traslape de grupo '{o1['grupo']}': '{o1['materia']}' ({dia_label} {o1['hora_inicio']}-{o1['hora_fin']}) y '{o2['materia']}' ({dia_label} {o2['hora_inicio']}-{o2['hora_fin']})",
+                            "sheet": o1["sheet"],
+                            "dia": o1["dia"],
+                            "hora_inicio": o1["hora_inicio"],
+                            "block_id": o1["block_id"],
+                            "related_sheet": o2["sheet"],
+                            "related_block_id": o2["block_id"]
+                        })
+                        
+    return {
+        "errors": errors,
+        "warnings": warnings,
+        "total_errors": len(errors),
+        "total_warnings": len(warnings)
+    }
+
+
 

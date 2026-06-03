@@ -25,9 +25,10 @@ const ScheduleGrid = () => {
     selectionMode,
     selectedBlockIds,
     toggleBlockSelection,
+    editingBlock,
+    setEditingBlock,
   } = useSchedule();
   const { pushAction } = useHistory();
-  const [editingBlock, setEditingBlock] = useState(null);
   const [showMultiEditor, setShowMultiEditor] = useState(false);
   const [newBlockSlot, setNewBlockSlot] = useState(null);
   const [isDragging, setIsDragging] = useState(false);

@@ -18,10 +18,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { toast } from 'sonner';
 import { useSchedule } from '../context/ScheduleContext';
 import { useHistory } from '../context/HistoryContext';
-import { Search, Trash2, Plus, Clock, Calendar, Save, CheckCircle2 } from 'lucide-react';
+import { Search, Trash2, Plus, Clock, Calendar, Save, CheckCircle2, Sparkles } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
 const API = BACKEND_URL ? `${BACKEND_URL}/api` : '/api';
+
+const cleanNoise = (text) => {
+  if (!text) return '';
+  return text
+    .replace(/\r?\n/g, ' ')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s\-_,;/|]+|[\s\-_,;/|]+$/g, '')
+    .trim();
+};
 
 const BlockEditor = ({ block, onClose }) => {
   const { scheduleId } = useParams();
@@ -521,7 +531,29 @@ const BlockEditor = ({ block, onClose }) => {
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
             <span>Editar Bloque</span>
-            {getStatusBadge()}
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs px-2 text-blue-600 hover:text-blue-700 border-blue-200 bg-blue-50/50"
+                onClick={() => {
+                  setFormData(prev => ({
+                    materia: cleanNoise(prev.materia),
+                    materia_id: prev.materia_id,
+                    grupo: cleanNoise(prev.grupo),
+                    docente: cleanNoise(prev.docente),
+                    aula: cleanNoise(prev.aula)
+                  }));
+                  toast.success("Campos normalizados con éxito");
+                }}
+                title="Limpiar ruido de todos los campos (quitar dobles espacios, saltos de línea y guiones huérfanos)"
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1" />
+                Limpiar ruido
+              </Button>
+              {getStatusBadge()}
+            </div>
           </DialogTitle>
           <DialogDescription>
             Edita la información del bloque y, si lo necesitas, ajusta manualmente los intervalos de 50 minutos en la pestaña "Horarios".
@@ -552,6 +584,12 @@ const BlockEditor = ({ block, onClose }) => {
                   value={formData.materia}
                   onChange={(e) => handleChange('materia', e.target.value)}
                   onFocus={() => formData.materia.length >= 2 && setShowSuggestions(true)}
+                  onBlur={(e) => {
+                    const cleaned = cleanNoise(e.target.value);
+                    if (cleaned !== e.target.value) {
+                      handleChange('materia', cleaned);
+                    }
+                  }}
                   placeholder="Buscar materia..."
                   data-testid="materia-input"
                 />
@@ -590,6 +628,12 @@ const BlockEditor = ({ block, onClose }) => {
                 id="grupo"
                 value={formData.grupo}
                 onChange={(e) => handleChange('grupo', e.target.value)}
+                onBlur={(e) => {
+                  const cleaned = cleanNoise(e.target.value);
+                  if (cleaned !== e.target.value) {
+                    handleChange('grupo', cleaned);
+                  }
+                }}
                 placeholder="Ej: A1, B2"
                 data-testid="grupo-input"
               />
@@ -638,6 +682,12 @@ const BlockEditor = ({ block, onClose }) => {
                   handleChange('docente', e.target.value);
                   setTeacherSaved(false);
                 }}
+                onBlur={(e) => {
+                  const cleaned = cleanNoise(e.target.value);
+                  if (cleaned !== e.target.value) {
+                    handleChange('docente', cleaned);
+                  }
+                }}
                 placeholder="Nombre del docente"
                 data-testid="docente-input"
               />
@@ -649,6 +699,12 @@ const BlockEditor = ({ block, onClose }) => {
                 id="aula"
                 value={formData.aula}
                 onChange={(e) => handleChange('aula', e.target.value)}
+                onBlur={(e) => {
+                  const cleaned = cleanNoise(e.target.value);
+                  if (cleaned !== e.target.value) {
+                    handleChange('aula', cleaned);
+                  }
+                }}
                 placeholder="Laboratorio, salón, etc."
                 data-testid="aula-input"
               />

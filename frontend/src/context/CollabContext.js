@@ -114,7 +114,7 @@ export const CollabProvider = ({ scheduleId, children }) => {
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
       if (wsRef.current) wsRef.current.close();
     };
-  }, [scheduleId, username, token]);
+  }, [scheduleId, username, token, logout]);
 
   const requestLock = useCallback((sheet) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {

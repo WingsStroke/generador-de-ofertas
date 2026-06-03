@@ -145,3 +145,14 @@ class Subject(BaseModel):
     nombre_oficial: str
     codigo: Optional[str] = None
     creditos: Optional[int] = None
+
+class GlobalReplaceRequest(BaseModel):
+    """Solicitud de búsqueda y reemplazo global"""
+    search_text: str
+    replace_text: str
+    field: str  # "materia", "docente", "aula" o "all"
+    scope: str  # "all" o "current"
+    current_sheet: Optional[str] = None
+    case_sensitive: bool = False
+    exact_match: bool = False
+

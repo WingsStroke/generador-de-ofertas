@@ -79,6 +79,28 @@ def _find_grid_index(val: float, coord_list: List[float], tolerance: float = 3.0
 # ──────────────────────────────────────────────────────────────────────────────
 # Conversión principal
 # ──────────────────────────────────────────────────────────────────────────────
+def pdf_color_to_hex(color) -> Optional[str]:
+    """
+    Convierte un color de pdfplumber (float o lista de floats) a un string hexadecimal RRGGBB.
+    """
+    if not color:
+        return None
+    if isinstance(color, (int, float)):
+        val = int(color * 255) if color <= 1.0 else int(color)
+        val = max(0, min(255, val))
+        return f"{val:02X}{val:02X}{val:02X}"
+    if isinstance(color, (list, tuple)):
+        rgb = []
+        for c in color[:3]:
+            val = int(c * 255) if c <= 1.0 else int(c)
+            val = max(0, min(255, val))
+            rgb.append(val)
+        while len(rgb) < 3:
+            rgb.append(rgb[-1] if rgb else 0)
+        return f"{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}"
+    return None
+
+
 def pdf_to_xlsx(pdf_path: str) -> str:
     """
     Convierte un PDF de oferta académica a un archivo XLSX temporal.
@@ -122,8 +144,10 @@ def pdf_to_xlsx(pdf_path: str) -> str:
     import pdfplumber
 
     # Tolerancias de clustering (validadas contra los PDFs de la universidad)
+    # NOTA: no aumentar por encima de 5/8 — con valores mayores las filas
+    # adyacentes se colapsan y se pierden materias en páginas con multi-tabla.
     X_TOLERANCE = 3.0   # Para columnas
-    Y_TOLERANCE = 5.0   # Para filas (más laxa para evitar partir filas multi-línea)
+    Y_TOLERANCE = 5.0   # Para filas
     CROP_PADDING = 1.5  # Puntos de recorte interior para extracción de texto
 
     wb = openpyxl.Workbook()
@@ -135,7 +159,18 @@ def pdf_to_xlsx(pdf_path: str) -> str:
         with pdfplumber.open(pdf_path) as pdf:
             for page_idx, page in enumerate(pdf.pages):
                 page_num = page_idx + 1
-                tables = page.find_tables()
+
+                # Configuración de extracción de tablas mejorada
+                table_settings_lines = {
+                    "vertical_strategy": "lines",
+                    "horizontal_strategy": "lines",
+                    "snap_x_tolerance": 3,
+                    "snap_y_tolerance": 3,
+                    "join_tolerance": 4,
+                }
+                tables = page.find_tables(table_settings=table_settings_lines)
+                if not tables:
+                    tables = page.find_tables()
 
                 if not tables:
                     logger.debug(f"Página {page_num}: sin tablas, se omite.")
@@ -165,8 +200,8 @@ def pdf_to_xlsx(pdf_path: str) -> str:
                 xs_grid = _cluster_coordinates(xs_raw, tolerance=X_TOLERANCE)
                 ys_grid = _cluster_coordinates(ys_raw, tolerance=Y_TOLERANCE)
 
-                written_mask: set = set()
-                merges_to_apply: list = []
+                cells_written: dict = {}
+                merges_to_apply: set = set()
 
                 for table in tables:
                     for row in table.rows:
@@ -191,11 +226,7 @@ def pdf_to_xlsx(pdf_path: str) -> str:
                             if excel_r2 < excel_r1 or excel_c2 < excel_c1:
                                 continue
 
-                            # Evitar sobrescribir la celda principal de un merge
                             cell_id = (excel_r1, excel_c1)
-                            if cell_id in written_mask:
-                                continue
-                            written_mask.add(cell_id)
 
                             # Extraer texto con padding para evitar artefactos de borde
                             crop_box = (
@@ -208,6 +239,44 @@ def pdf_to_xlsx(pdf_path: str) -> str:
                             raw_text = cropped.extract_text()
                             text_val = _clean_pdf_text(raw_text.strip()) if raw_text else ""
 
+                            # Resolución de conflictos: si la celda ya fue escrita,
+                            # conservar el texto con mayor cantidad de contenido.
+                            # Esto protege contra duplicados exactos del PDF (capas superpuestas)
+                            # sin perder contenido de páginas con múltiples tablas detectadas.
+                            if cell_id in cells_written:
+                                existing_text = cells_written[cell_id]
+                                # Texto idéntico → duplicado real, descartar
+                                if text_val.strip().lower() == existing_text.strip().lower():
+                                    continue
+                                # Si el nuevo tiene más contenido, reemplazar
+                                if len(text_val.strip()) > len(existing_text.strip()):
+                                    cells_written[cell_id] = text_val
+                                    # (re-escribir la celda Excel con el texto ganador)
+                                else:
+                                    continue  # existente ya tiene más contenido
+                            else:
+                                cells_written[cell_id] = text_val
+
+                            # Buscar color en page.rects usando coordenadas invertidas de Y
+                            color_val = None
+                            cc_x = (x0 + x1) / 2
+                            cc_y = (y0 + y1) / 2
+                            cc_y_inv = page.height - cc_y
+                            
+                            best_rect_area = float('inf')
+                            for r in page.rects:
+                                if not r.get("non_stroking_color"):
+                                    continue
+                                rx0 = r["x0"]
+                                ry0 = r["y0"]
+                                rx1 = r["x1"]
+                                ry1 = r["y1"]
+                                if (rx0 - 0.5 <= cc_x <= rx1 + 0.5) and (ry0 - 0.5 <= cc_y_inv <= ry1 + 0.5):
+                                    area = (rx1 - rx0) * (ry1 - ry0)
+                                    if area < best_rect_area:
+                                        best_rect_area = area
+                                        color_val = r["non_stroking_color"]
+
                             from openpyxl.styles import Border, Side, Alignment, Font, PatternFill
                             thin = Side(border_style="thin", color="000000")
                             
@@ -215,13 +284,21 @@ def pdf_to_xlsx(pdf_path: str) -> str:
                             c_obj.border = Border(top=thin, left=thin, right=thin, bottom=thin)
                             c_obj.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
                             
+                            is_header = False
                             if text_val and text_val.strip().upper() in ["HORA", "LUNES", "MARTES", "MIÉRCOLES", "MIERCOLES", "JUEVES", "VIERNES", "SÁBADO", "SABADO"]:
                                 c_obj.font = Font(bold=True)
+                                is_header = True
+
+                            hex_color = pdf_color_to_hex(color_val)
+                            if hex_color:
+                                if hex_color.upper() != "FFFFFF":
+                                    c_obj.fill = PatternFill(start_color=hex_color, end_color=hex_color, fill_type="solid")
+                            elif is_header:
                                 c_obj.fill = PatternFill(start_color="EAEAEA", end_color="EAEAEA", fill_type="solid")
 
                             # Registrar fusión si la celda ocupa más de 1 fila o columna
                             if excel_r2 > excel_r1 or excel_c2 > excel_c1:
-                                merges_to_apply.append((excel_r1, excel_c1, excel_r2, excel_c2))
+                                merges_to_apply.add((excel_r1, excel_c1, excel_r2, excel_c2))
 
                 # Aplicar fusiones al final para evitar conflictos
                 for r1, c1, r2, c2 in merges_to_apply:
