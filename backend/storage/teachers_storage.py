@@ -1,10 +1,36 @@
 import json
 import logging
 import unicodedata
+import re
 from pathlib import Path
 from typing import Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
+
+
+def _is_invalid_teacher_name(name: str) -> bool:
+    """Retorna True si un nombre parece ser un código de grupo o una modalidad."""
+    if not name:
+        return True
+    cleaned = re.sub(r'[.,;]', '', name).strip()
+    words = cleaned.split()
+    if not words:
+        return True
+    # Group code regex: A1, B2, etc.
+    group_re = re.compile(r'^[A-Z]\d+$')
+    modality_keywords = {
+        'teoria', 'teoría', 'teorica', 'teórica',
+        'laboratorio', 'lab',
+        'practica', 'práctica',
+        'taller',
+        'seminario',
+        'virtual',
+    }
+    words_lower = [w.lower() for w in words]
+    return all(
+        w in modality_keywords or bool(group_re.match(wup))
+        for w, wup in zip(words_lower, words)
+    )
 
 
 class TeachersStorage:
@@ -80,6 +106,8 @@ class TeachersStorage:
                 new_store: Dict[str, str] = {}
                 for name in raw_list:
                     if not name or not name.strip():
+                        continue
+                    if _is_invalid_teacher_name(name):
                         continue
                     display = self._display_normalize(name)
                     key = self._ascii_key(display)
@@ -229,6 +257,13 @@ class TeachersStorage:
         - Si hay similares y force=False: retorna requires_confirmation=True.
         - Si force=True o no hay similares: añade.
         """
+        if _is_invalid_teacher_name(name):
+            return {
+                "added": False,
+                "normalized": "",
+                "requires_confirmation": False,
+                "similar": []
+            }
         display = self._display_normalize(name)
         key = self._ascii_key(display)
 
@@ -262,6 +297,8 @@ class TeachersStorage:
         """Añade múltiples docentes sin verificación fuzzy (extracción masiva)."""
         added = 0
         for name in names:
+            if _is_invalid_teacher_name(name):
+                continue
             display = self._display_normalize(name)
             key = self._ascii_key(display)
             if key and key not in self._teachers:

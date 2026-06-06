@@ -41,6 +41,23 @@ _MODALITY_KEYWORDS = {
 _GROUP_CODE_RE = re.compile(r'^[A-Z]\d+$')
 
 
+def looks_like_modality_group(text: str) -> bool:
+    """Detecta si el texto consiste puramente de palabras de modalidad y/o códigos de grupo.
+    Ejemplos: "Teoria A1", "Laboratorio F2", "Lab A3", "Teoría".
+    """
+    if not text:
+        return False
+    cleaned = re.sub(r'[.,;]', '', text).strip()
+    words = cleaned.split()
+    if not words:
+        return False
+    words_lower = [w.lower() for w in words]
+    return all(
+        w in _MODALITY_KEYWORDS or bool(_GROUP_CODE_RE.match(wup))
+        for w, wup in zip(words_lower, words)
+    )
+
+
 def _ascii_key(s: str) -> str:
     """Normaliza a ASCII mayúsculas sin tildes ni puntos."""
     nfd = unicodedata.normalize('NFKD', s.upper().strip())
@@ -137,20 +154,21 @@ class SemanticParser:
                     )
                     if m:
                         matched_teacher = teachers_ascii[m[0]]
-                        docente = matched_teacher
-                        origen_docente = "diccionario"
+                        if not looks_like_modality_group(matched_teacher):
+                            docente = matched_teacher
+                            origen_docente = "diccionario"
 
-                        # Solo eliminar la parte si es PRINCIPALMENTE el nombre
-                        # del docente (no un texto largo que contenga otros datos).
-                        # Criterio: la parte no debe tener más del doble de palabras
-                        # que el nombre del docente.
-                        teacher_word_count = len(matched_teacher.split())
-                        part_word_count = len(part.split())
-                        if part_word_count <= teacher_word_count * 2:
-                            parts.pop(i)
-                        # Si la parte es más larga, NO se elimina — _clean_subject_name
-                        # se encargará de quitar el nombre del docente de la materia.
-                        break
+                            # Solo eliminar la parte si es PRINCIPALMENTE el nombre
+                            # del docente (no un texto largo que contenga otros datos).
+                            # Criterio: la parte no debe tener más del doble de palabras
+                            # que el nombre del docente.
+                            teacher_word_count = len(matched_teacher.split())
+                            part_word_count = len(part.split())
+                            if part_word_count <= teacher_word_count * 2:
+                                parts.pop(i)
+                            # Si la parte es más larga, NO se elimina — _clean_subject_name
+                            # se encargará de quitar el nombre del docente de la materia.
+                            break
 
             # Fallback: buscar en el texto completo con partial_ratio
             if not docente:
@@ -160,8 +178,10 @@ class SemanticParser:
                     scorer=fuzz.partial_ratio, score_cutoff=82,
                 )
                 if m:
-                    docente = teachers_ascii[m[0]]
-                    origen_docente = "diccionario"
+                    matched_teacher = teachers_ascii[m[0]]
+                    if not looks_like_modality_group(matched_teacher):
+                        docente = matched_teacher
+                        origen_docente = "diccionario"
 
         # ── 2. Extraer materia del primer fragmento ──────────────────────────
         if len(parts) >= 1:
@@ -355,12 +375,7 @@ class SemanticParser:
         # Rechazar si TODAS las palabras son modalidades de curso o códigos de grupo.
         # Ejemplos problemáticos: "Teoria A1", "Laboratorio F2", "Lab A3".
         # Si todas las palabras caen en {modalidad} ∪ {código_grupo}, NO es persona.
-        words_lower = [w.lower() for w in words]
-        all_modality_or_group = all(
-            w in _MODALITY_KEYWORDS or bool(_GROUP_CODE_RE.match(wup))
-            for w, wup in zip(words_lower, words)
-        )
-        if all_modality_or_group:
+        if looks_like_modality_group(text):
             return False
 
         # Rechazar si tiene número romano y solo 1 palabra no-romana

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Dict, List
 from utils.excel_reader import ExcelReader
 from utils.text_cleaner import TextCleaner
-from utils.semantic_parser import SemanticParser
+from utils.semantic_parser import SemanticParser, looks_like_modality_group
 from utils.subject_matcher import SubjectMatcher
 from utils.time_utils import calcular_bloques_horarios
 from models import (
@@ -337,8 +337,10 @@ class ScheduleProcessor:
         if not match and materia_oficial != materia_original:
             match, single_group = find_match(catalog_entries, materia_oficial, grupo_text, threshold=85)
 
+        docente_valido = block.docente and not looks_like_modality_group(block.docente)
+
         if match:
-            if not block.docente and match.get("docente"):
+            if (not docente_valido) and match.get("docente"):
                 block.docente = match["docente"]
             if match.get("codigo") and not block.materia_id:
                 block.materia_id = match["codigo"]
@@ -348,7 +350,7 @@ class ScheduleProcessor:
 
         if single_group and not block.grupo:
             block.grupo = single_group["grupo"]
-            if not block.docente and single_group.get("docente"):
+            if (not docente_valido) and single_group.get("docente"):
                 block.docente = single_group["docente"]
             if single_group.get("codigo") and not block.materia_id:
                 block.materia_id = single_group["codigo"]
