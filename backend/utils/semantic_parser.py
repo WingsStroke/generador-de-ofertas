@@ -18,6 +18,28 @@ _LOCATION_KEYWORDS = [
     'piso', 'bloque', 'taller', 'virtual', 'planta', 'grupo', 'grupos',
 ]
 
+# ── Palabras de modalidad de curso ───────────────────────────────────────────
+# Estas palabras describen el TIPO de clase (teórica vs. práctica) y aparecen
+# frecuentemente al final del nombre en las celdas del horario de Alimentos.
+# NO son parte del nombre oficial de la materia en el catálogo.
+# Son usadas para:
+#  a) Rechazarlas como posibles nombres de docente.
+#  b) Limpiarlas del campo `aula` cuando van seguidas de un código de grupo.
+_MODALITY_KEYWORDS = {
+    'teoria', 'teoría', 'teorica', 'teórica',
+    'laboratorio', 'laboratorio',
+    'lab',
+    'practica', 'práctica',
+    'taller',
+    'seminario',
+    'virtual',
+}
+
+# ── Patrón de código de grupo ─────────────────────────────────────────────────
+# Detecta códigos del tipo A1, F2, H1, E1, C1, etc.
+# Una sola letra mayúscula seguida de uno o más dígitos.
+_GROUP_CODE_RE = re.compile(r'^[A-Z]\d+$')
+
 
 def _ascii_key(s: str) -> str:
     """Normaliza a ASCII mayúsculas sin tildes ni puntos."""
@@ -183,7 +205,7 @@ class SemanticParser:
                 materia, docente, teachers_ascii, teachers_ascii_keys
             )
 
-        # ── 5. Filtros de exclusión mutua para aula ──────────────────────────
+        # ── 5. Filtros de exclusión mutua para aula ─────────────────────────────────
         if aula and grupo:
             aula_limpia = re.sub(r'(?i)^grupo\s*', '', aula).strip()
             if aula_limpia == grupo:
@@ -192,6 +214,17 @@ class SemanticParser:
         if aula and re.fullmatch(r'\(?[A-Z]\d+\)?', aula.strip()):
             if not any(kw in aula.lower() for kw in ['lab', 'sal', 'aula', 'bloque', 'edificio']):
                 aula = None
+
+        # 5b. Eliminar código de grupo residual al final del campo `aula`.
+        # Caso frecuente en Alimentos: aula = "Laboratorio A1" cuando la celda es
+        # "Quimica Organica Laboratorio A1". El grupo ya fue extraído; el aula debe
+        # quedar como "Laboratorio" o eliminarse si es solo un código de grupo.
+        if aula and grupo:
+            # Quitar el código de grupo del final del campo aula
+            aula_sin_grupo = re.sub(r'\s+' + re.escape(grupo) + r'\s*$', '', aula).strip()
+            # Si aula queda vacía o es solo separador, limpiar
+            aula_sin_grupo = re.sub(r'^[-\s]+$', '', aula_sin_grupo).strip()
+            aula = aula_sin_grupo if aula_sin_grupo else None
 
         return {
             "materia": materia if materia else texto_limpio,
@@ -256,6 +289,24 @@ class SemanticParser:
         # 4e. Quitar la palabra "Aula" si quedó pegada al final de la materia
         cleaned = re.sub(r'(?i)\s+aula\s*$', '', cleaned).strip()
 
+        # 4f. Quitar palabras de modalidad de curso al final del nombre.
+        # Las celdas del horario de Alimentos incluyen el tipo de clase al final:
+        # "Fisica Mecanica Teoria"       → "Fisica Mecanica"
+        # "Biologia Aplicada Laboratorio" → "Biologia Aplicada"
+        # "Electromagnetismo Teoria"      → "Electromagnetismo"
+        # "Quimica Organica Lab"          → "Quimica Organica"
+        # IMPORTANTE: sólo se eliminan cuando están al FINAL del nombre y el
+        # resultado no queda vacío (permite nombres de una sola palabra).
+        modality_pattern = re.compile(
+            r'(?i)\s+(?:teor[ií]a|te[oó]rica|laboratorio|lab|prá?ctica|seminario)\s*$'
+        )
+        stripped = modality_pattern.sub('', cleaned).strip()
+        # Preservar si la materia es SOLO la palabra de modalidad (resultado vacío)
+        # Nunca debe quedar vacío — si eso pasa, conservar el original.
+        if stripped:
+            cleaned = stripped
+
+
         # Limpiar separadores sobrantes
         cleaned = re.sub(r'^[-–—,;\s]+|[-–—,;\s]+$', '', cleaned).strip()
 
@@ -271,6 +322,8 @@ class SemanticParser:
         - Descarta palabras clave de ubicación física.
         - Descarta códigos alfanuméricos simples (ej. "A1", "LAB201").
         - Rechaza títulos de materia del tipo "CALCULO III" (1 no-romano + romano).
+        - Rechaza fragmentos del tipo "Teoria A1", "Laboratorio F2"
+          (modalidad de curso + código de grupo).
         """
         if not text:
             return False
@@ -297,6 +350,17 @@ class SemanticParser:
             return False
 
         if re.fullmatch(r'[A-Z]{1,4}\d+', cleaned):
+            return False
+
+        # Rechazar si TODAS las palabras son modalidades de curso o códigos de grupo.
+        # Ejemplos problemáticos: "Teoria A1", "Laboratorio F2", "Lab A3".
+        # Si todas las palabras caen en {modalidad} ∪ {código_grupo}, NO es persona.
+        words_lower = [w.lower() for w in words]
+        all_modality_or_group = all(
+            w in _MODALITY_KEYWORDS or bool(_GROUP_CODE_RE.match(wup))
+            for w, wup in zip(words_lower, words)
+        )
+        if all_modality_or_group:
             return False
 
         # Rechazar si tiene número romano y solo 1 palabra no-romana
