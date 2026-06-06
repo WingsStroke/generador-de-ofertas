@@ -17,6 +17,7 @@ from routers.upload import router as upload_router
 from routers.schedules import router as schedules_router
 from routers.collab import router as collab_router
 from routers.auth import router as auth_router
+from routers.r2 import router as r2_router
 from database import init_db, close_db
 
 logging.basicConfig(
@@ -48,6 +49,7 @@ app.include_router(upload_router, prefix="/api")
 app.include_router(schedules_router, prefix="/api")
 app.include_router(collab_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
+app.include_router(r2_router, prefix="/api")
 
 @app.get("/api/")
 async def root():

@@ -289,3 +289,35 @@ def upload_schedule_json(
     )
 
     return public_url
+
+
+def get_r2_index() -> dict:
+    """
+    Obtiene el index.json global desde el bucket de R2.
+    """
+    if not is_r2_configured():
+        raise RuntimeError("Cloudflare R2 no está configurado.")
+    client = _get_r2_client()
+    bucket_name = os.getenv("R2_BUCKET_NAME")
+    return _get_global_index(client, bucket_name)
+
+
+def get_r2_object(semester: str, filename: str) -> dict:
+    """
+    Descarga y parsea un archivo JSON de oferta académica desde R2.
+    """
+    if not is_r2_configured():
+        raise RuntimeError("Cloudflare R2 no está configurado.")
+    client = _get_r2_client()
+    bucket_name = os.getenv("R2_BUCKET_NAME")
+
+    # Limpiar y sanitizar rutas
+    safe_semester = re.sub(r'[^a-z0-9\-_]', '', semester.lower())
+    safe_filename = _sanitize_filename(filename)
+    object_key = f"{safe_semester}/{safe_filename}"
+
+    logger.info(f"Descargando desde R2: bucket={bucket_name}, key={object_key}")
+    response = client.get_object(Bucket=bucket_name, Key=object_key)
+    raw = response["Body"].read().decode("utf-8")
+    return json.loads(raw)
+

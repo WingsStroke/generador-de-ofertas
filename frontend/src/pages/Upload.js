@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
-import { Upload as UploadIcon, FileSpreadsheet, FileText, CheckCircle, GraduationCap, FileJson, AlertCircle, ChevronDown, ChevronUp, Users, LogOut } from 'lucide-react';
+import { Upload as UploadIcon, FileSpreadsheet, FileText, CheckCircle, GraduationCap, FileJson, AlertCircle, ChevronDown, ChevronUp, Users, LogOut, Cloud, Loader2, FolderOpen } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -29,7 +29,11 @@ const Upload = () => {
   const [activeSchedules, setActiveSchedules] = useState([]);
   const navigate = useNavigate();
   const { setExcelHtmlBySheet } = useSchedule();
-  const { logout, username } = useAuth();
+  const { logout, username, role } = useAuth();
+  const [r2Semesters, setR2Semesters] = useState([]);
+  const [loadingR2, setLoadingR2] = useState(false);
+  const [importingR2, setImportingR2] = useState(false);
+  const [r2Error, setR2Error] = useState(null);
   // Fetch active schedules periodically
   useEffect(() => {
     const fetchActiveSchedules = async () => {
@@ -165,6 +169,45 @@ const Upload = () => {
     }
   };
 
+  const fetchR2Schedules = async () => {
+    setLoadingR2(true);
+    setR2Error(null);
+    try {
+      const response = await axios.get(`${API}/r2/schedules`);
+      setR2Semesters(response.data.semestres || []);
+    } catch (error) {
+      console.error('Error fetching R2 schedules:', error);
+      const detail = error?.response?.data?.detail || 'No se pudo conectar con el servidor o Cloudflare R2.';
+      setR2Error(detail);
+    } finally {
+      setLoadingR2(false);
+    }
+  };
+
+  const handleImportFromR2 = async (semester, filename) => {
+    setImportingR2(true);
+    try {
+      const response = await axios.post(`${API}/r2/import`, {
+        semester,
+        filename
+      });
+      toast.success('Oferta descargada e importada desde Cloudflare R2 con éxito');
+      navigate(`/dashboard/${response.data.schedule_id}`);
+    } catch (error) {
+      console.error('Error importing from R2:', error);
+      const detail = error?.response?.data?.detail || 'Error al descargar e importar la oferta desde R2.';
+      toast.error(`Error de importación: ${detail}`);
+    } finally {
+      setImportingR2(false);
+    }
+  };
+
+  useEffect(() => {
+    if (mode === 'r2') {
+      fetchR2Schedules();
+    }
+  }, [mode]);
+
   const handleUpload = async () => {
     if (!file) {
       toast.error('Por favor selecciona un archivo');
@@ -252,6 +295,16 @@ const Upload = () => {
               <FileJson className="w-4 h-4" />
               Importar JSON
             </button>
+            {role === 'admin' && (
+              <button
+                onClick={() => { setMode('r2'); setFile(null); setJsonFile(null); setJsonErrors([]); }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-md text-sm font-medium transition-all ${mode === 'r2' ? 'bg-white shadow-sm text-amber-700' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+              >
+                <Cloud className="w-4 h-4" />
+                Editar desde R2
+              </button>
+            )}
           </div>
 
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-8">
@@ -326,7 +379,7 @@ const Upload = () => {
                   </div>
                 )}
               </div>
-            ) : (
+            ) : mode === 'json' ? (
               <div className="space-y-6">
                 <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 text-sm text-emerald-800">
                   Importa un archivo <strong>.json</strong> exportado previamente desde esta aplicación.
@@ -403,6 +456,73 @@ const Upload = () => {
                     >
                       {importingJson ? <span>Importando...</span> : <><UploadIcon className="w-5 h-5 mr-2" />Importar JSON</>}
                     </Button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800 flex items-center gap-3">
+                  <Cloud className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                  <div>
+                    Selecciona una oferta académica guardada en <strong>Cloudflare R2</strong> para cargarla en el editor.
+                  </div>
+                </div>
+
+                {loadingR2 ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-3">
+                    <Loader2 className="w-8 h-8 text-amber-600 animate-spin" />
+                    <p className="text-sm font-medium text-slate-500">Conectando con Cloudflare R2 y obteniendo listado...</p>
+                  </div>
+                ) : r2Error ? (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-4 flex flex-col gap-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-red-700">
+                      <AlertCircle className="w-5 h-5" />
+                      Error al cargar archivos de R2
+                    </div>
+                    <p className="text-xs text-red-600 leading-normal font-mono bg-white border border-red-100 rounded p-3 overflow-x-auto max-h-40">
+                      {r2Error}
+                    </p>
+                    <Button variant="outline" size="sm" onClick={fetchR2Schedules} className="self-start border-red-200 text-red-700 hover:bg-red-100/50">
+                      Intentar de nuevo
+                    </Button>
+                  </div>
+                ) : r2Semesters.length === 0 ? (
+                  <div className="text-center py-12 border border-dashed rounded-lg border-slate-200">
+                    <FolderOpen className="w-10 h-10 text-slate-400 mx-auto mb-2" />
+                    <p className="text-sm font-medium text-slate-500">No se encontraron ofertas académicas publicadas en R2.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6 max-h-[400px] overflow-y-auto pr-2">
+                    {r2Semesters.map((sem) => (
+                      <div key={sem.periodo} className="space-y-3">
+                        <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider border-b pb-1">
+                          {sem.label || sem.periodo}
+                        </h4>
+                        <div className="grid gap-3">
+                          {sem.programas.map((prog) => (
+                            <div key={prog.id} className="flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-amber-300 hover:bg-amber-50/20 transition-all group">
+                              <div className="flex items-center gap-3">
+                                <div className="bg-amber-100 p-2.5 rounded-full text-amber-700">
+                                  <FileText className="w-5 h-5" />
+                                </div>
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-800">{prog.nombre}</p>
+                                  <p className="text-xs text-slate-400 font-mono mt-0.5">{prog.archivo}</p>
+                                </div>
+                              </div>
+                              <Button
+                                size="sm"
+                                disabled={importingR2}
+                                onClick={() => handleImportFromR2(sem.periodo, prog.archivo)}
+                                className="bg-amber-600 hover:bg-amber-700 text-white font-medium shadow-sm transition-all group-hover:scale-105"
+                              >
+                                {importingR2 ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Editar'}
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
