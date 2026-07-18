@@ -303,10 +303,9 @@ const DashboardInner = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [scheduleRes, subjectsRes] = await Promise.all([
-          axios.get(`${API}/schedule/${scheduleId}`),
-          axios.get(`${API}/subjects`),
-        ]);
+        const scheduleRes = await axios.get(`${API}/schedule/${scheduleId}`);
+        const programId = scheduleRes.data?.programa_id || 'ingenieria_de_sistemas';
+        const subjectsRes = await axios.get(`${API}/subjects?program_id=${encodeURIComponent(programId)}`);
 
         setScheduleData(scheduleRes.data);
         const firstSheet = scheduleRes.data.hoja_actual || (scheduleRes.data.hojas && scheduleRes.data.hojas[0]);

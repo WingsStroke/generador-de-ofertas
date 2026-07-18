@@ -136,6 +136,10 @@ const DictionaryPanel = ({ scheduleId, onNavigate }) => {
   const [searchAsig, setSearchAsig] = useState('');
   const [expandedTeacher, setExpandedTeacher] = useState(null);
   const [expandedSubject, setExpandedSubject] = useState(null);
+  const [subjectsSummary, setSubjectsSummary] = useState([]);
+  const [subjectsLoading, setSubjectsLoading] = useState(false);
+  const [subjectEdits, setSubjectEdits] = useState({});
+  const [savingSubjectId, setSavingSubjectId] = useState(null);
 
   const fetchDict = useCallback(async () => {
     setLoadingDict(true);
@@ -148,8 +152,26 @@ const DictionaryPanel = ({ scheduleId, onNavigate }) => {
 
   useEffect(() => { fetchDict(); }, [fetchDict]);
 
+  const fetchSubjectsSummary = useCallback(async () => {
+    if (!scheduleId) return;
+    setSubjectsLoading(true);
+    try {
+      const res = await axios.get(`${API}/schedule/${scheduleId}/subjects-summary`);
+      setSubjectsSummary(res.data.subjects || []);
+    } catch (error) {
+      console.error('Error cargando resumen de asignaturas:', error);
+      setSubjectsSummary([]);
+    } finally {
+      setSubjectsLoading(false);
+    }
+  }, [scheduleId]);
+
+  useEffect(() => {
+    fetchSubjectsSummary();
+  }, [fetchSubjectsSummary, scheduleData]);
+
   const teachers = useMemo(() => extractTeachersFromSchedule(scheduleData), [scheduleData]);
-  const subjects = useMemo(() => extractSubjectsFromSchedule(scheduleData), [scheduleData]);
+  const subjects = useMemo(() => subjectsSummary, [subjectsSummary]);
 
   const newTeachers = useMemo(
     () => teachers.filter((t) => !knownTeachers.has(t.nombre.toUpperCase())),
@@ -165,6 +187,62 @@ const DictionaryPanel = ({ scheduleId, onNavigate }) => {
     const q = searchAsig.toLowerCase().trim();
     return q ? subjects.filter((s) => s.nombre.toLowerCase().includes(q)) : subjects;
   }, [subjects, searchAsig]);
+
+  const handleSubjectEditChange = (subjectId, field, value) => {
+    setSubjectEdits((prev) => ({
+      ...prev,
+      [subjectId]: {
+        ...(prev[subjectId] || {}),
+        [field]: value,
+      },
+    }));
+  };
+
+  const getSubjectDraft = (subject) => {
+    const draft = subjectEdits[subject.id] || {};
+    return {
+      codigo: draft.codigo !== undefined ? draft.codigo : (subject.codigo || ''),
+      creditos: draft.creditos !== undefined ? draft.creditos : (subject.creditos ?? ''),
+    };
+  };
+
+  const handleUpdateSubjectMetadata = async (subject) => {
+    if (role !== 'admin') return;
+    const draft = getSubjectDraft(subject);
+    setSavingSubjectId(subject.id);
+    try {
+      await axios.patch(`${API}/schedule/${scheduleId}/subject/${encodeURIComponent(subject.id)}/metadata`, {
+        codigo: draft.codigo || null,
+        creditos: draft.creditos === '' ? null : Number(draft.creditos),
+      });
+      toast.success('Metadatos de asignatura actualizados en el horario');
+      await fetchSubjectsSummary();
+    } catch (error) {
+      const detail = error?.response?.data?.detail || 'No se pudieron actualizar los metadatos';
+      toast.error(detail);
+    } finally {
+      setSavingSubjectId(null);
+    }
+  };
+
+  const handleSaveSubjectGlobal = async (subject) => {
+    if (role !== 'admin') return;
+    const draft = getSubjectDraft(subject);
+    setSavingSubjectId(subject.id);
+    try {
+      await axios.post(`${API}/schedule/${scheduleId}/subject/${encodeURIComponent(subject.id)}/save-global`, {
+        codigo: draft.codigo || null,
+        creditos: draft.creditos === '' ? null : Number(draft.creditos),
+      });
+      toast.success('Asignatura guardada en diccionario global');
+      await fetchSubjectsSummary();
+    } catch (error) {
+      const detail = error?.response?.data?.detail || 'No se pudo guardar la asignatura global';
+      toast.error(detail);
+    } finally {
+      setSavingSubjectId(null);
+    }
+  };
 
   const handleSaveNew = async () => {
     if (newTeachers.length === 0) { toast.info('Todos los docentes ya están en el diccionario.'); return; }
@@ -307,8 +385,8 @@ const DictionaryPanel = ({ scheduleId, onNavigate }) => {
       {activeTab === 'asignaturas' && (
         <div className="flex flex-col flex-1 overflow-hidden">
           <div className="px-3 py-2 border-b border-slate-100 bg-white space-y-2">
-            <p className="text-[10px] text-slate-400 italic">
-              Solo lectura — el diccionario de asignaturas no se modifica desde aquí.
+            <p className="text-[10px] text-slate-500">
+              Metadatos por asignatura: ID, código, créditos, confianza y fuente.
             </p>
             <div className="relative">
               <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
@@ -318,6 +396,9 @@ const DictionaryPanel = ({ scheduleId, onNavigate }) => {
           </div>
 
           <div className="flex-1 overflow-y-auto">
+            {subjectsLoading && (
+              <div className="p-4 text-center text-xs text-slate-500">Cargando asignaturas...</div>
+            )}
             {filteredSubjects.length === 0 && (
               <div className="p-6 text-center text-xs text-slate-400">
                 {searchAsig ? 'Sin resultados.' : 'No hay asignaturas en el horario.'}
@@ -325,8 +406,10 @@ const DictionaryPanel = ({ scheduleId, onNavigate }) => {
             )}
             {filteredSubjects.map((s) => {
               const isExpanded = expandedSubject === s.id;
-              const conf = s.avgConf;
-              const hasId = !s.id.startsWith('_');
+              const conf = s.confianza_promedio ?? 0;
+              const draft = getSubjectDraft(s);
+              const isBase = !!s.is_base;
+              const isSaving = savingSubjectId === s.id;
               return (
                 <div key={s.id} className="border-b border-slate-100 last:border-0">
                   <button
@@ -335,7 +418,18 @@ const DictionaryPanel = ({ scheduleId, onNavigate }) => {
                   >
                     <div className="min-w-0 flex-1 space-y-1">
                       <span className="text-xs font-semibold text-slate-800 block truncate">{s.nombre}</span>
-                      <ConfidencePill conf={conf} inDict={hasId} />
+                      <div className="flex items-center gap-2">
+                        <ConfidencePill conf={conf} inDict={s.source === 'base' || s.source === 'global'} />
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                          s.source === 'base'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : s.source === 'global'
+                              ? 'bg-blue-50 text-blue-700'
+                              : 'bg-amber-50 text-amber-700'
+                        }`}>
+                          {s.source === 'base' ? 'Base' : s.source === 'global' ? 'Global' : 'Manual'}
+                        </span>
+                      </div>
                     </div>
                     <span className="text-slate-400 mt-0.5 shrink-0">
                       {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -347,9 +441,7 @@ const DictionaryPanel = ({ scheduleId, onNavigate }) => {
                       <div className="space-y-1 text-[11px] text-slate-600">
                         <div className="flex justify-between">
                           <span className="text-slate-400">ID materia</span>
-                          <span className="font-mono font-medium text-slate-700">
-                            {hasId ? s.id : <span className="text-amber-600 italic">Sin ID oficial</span>}
-                          </span>
+                          <span className="font-mono font-medium text-slate-700">{s.id}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-400">Confianza promedio</span>
@@ -359,9 +451,55 @@ const DictionaryPanel = ({ scheduleId, onNavigate }) => {
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-400">Ocurrencias</span>
-                          <span className="font-medium">{s.confianzas.length}</span>
+                          <span className="font-medium">{s.ocurrencias}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <div className="space-y-1">
+                            <span className="text-slate-400 text-[10px]">Código</span>
+                            <Input
+                              value={draft.codigo}
+                              onChange={(e) => handleSubjectEditChange(s.id, 'codigo', e.target.value)}
+                              className="h-7 text-xs"
+                              placeholder="Ej: MAT101"
+                              disabled={role !== 'admin' || isBase || isSaving}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-slate-400 text-[10px]">Créditos</span>
+                            <Input
+                              value={draft.creditos}
+                              onChange={(e) => handleSubjectEditChange(s.id, 'creditos', e.target.value)}
+                              className="h-7 text-xs"
+                              placeholder="Ej: 3"
+                              disabled={role !== 'admin' || isBase || isSaving}
+                            />
+                          </div>
                         </div>
                       </div>
+                      {role === 'admin' && (
+                        <div className="flex items-center gap-2 pt-1">
+                          <Button
+                            size="sm"
+                            className="h-7 text-[11px]"
+                            disabled={isBase || isSaving}
+                            onClick={() => handleUpdateSubjectMetadata(s)}
+                          >
+                            {isSaving ? 'Guardando...' : 'Guardar metadatos'}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-[11px]"
+                            disabled={isBase || isSaving}
+                            onClick={() => handleSaveSubjectGlobal(s)}
+                          >
+                            Guardar en global
+                          </Button>
+                          {isBase && (
+                            <span className="text-[10px] text-slate-500">Asignatura base bloqueada</span>
+                          )}
+                        </div>
+                      )}
                       {s.hoja && (
                         <button
                           className="w-full flex items-center justify-center gap-1.5 text-[11px] text-blue-600 hover:text-blue-800 font-medium bg-blue-50 hover:bg-blue-100 rounded-md py-1.5 transition-colors"

@@ -20,7 +20,7 @@
         "creditos": 3
     },
     "fisica_mecanica_y_laboratorio": {
-        "nombre_oficial": "Física Mecanica y Laboratorio",
+        "nombre_oficial": "Física Mecánica y Laboratorio",
         "codigo": "CFBD223",
         "creditos": 4
     },
@@ -135,7 +135,7 @@
         "creditos": 3
     },
     "teoria_general_de_sistemas": {
-        "nombre_oficial": "Teoria General de Sistemas",
+        "nombre_oficial": "Teoría General de Sistemas",
         "codigo": "CFP2205",
         "creditos": 3
     },

@@ -7,6 +7,31 @@ const ZOOM_MAX = 2.0;
 const ZOOM_STEP = 0.1;
 const ZOOM_DEFAULT = 0.75;
 
+const sanitizeSheetHtml = (rawHtml) => {
+  if (!rawHtml || typeof rawHtml !== 'string') return '';
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(rawHtml, 'text/html');
+
+  // Eliminar nodos potencialmente peligrosos aunque el backend ya escape valores.
+  doc.querySelectorAll('script, iframe, object, embed, link[rel="import"], meta[http-equiv]').forEach((el) => el.remove());
+
+  // Remover atributos inline que podrían ejecutar JS.
+  doc.querySelectorAll('*').forEach((el) => {
+    Array.from(el.attributes).forEach((attr) => {
+      const name = attr.name.toLowerCase();
+      const value = String(attr.value || '').toLowerCase();
+      if (name.startsWith('on')) {
+        el.removeAttribute(attr.name);
+      }
+      if ((name === 'src' || name === 'href') && value.startsWith('javascript:')) {
+        el.removeAttribute(attr.name);
+      }
+    });
+  });
+
+  return doc.body.innerHTML;
+};
+
 const ZoomControls = ({ zoom, onZoom, onReset }) => (
   <div className="excel-zoom-controls">
     <button
@@ -121,6 +146,7 @@ const ExcelPreview = () => {
 
   const currentSheet = scheduleData?.hoja_actual;
   const sheetHtml = currentSheet ? excelHtmlBySheet?.[currentSheet] : null;
+  const sanitizedSheetHtml = useMemo(() => sanitizeSheetHtml(sheetHtml), [sheetHtml]);
   const isLoading = currentSheet ? loadingHtmlBySheet?.[currentSheet] : false;
 
   useEffect(() => {
@@ -158,7 +184,7 @@ const ExcelPreview = () => {
     <div
       ref={containerRef}
       className="xlsx-html-preview"
-      dangerouslySetInnerHTML={{ __html: sheetHtml }}
+      dangerouslySetInnerHTML={{ __html: sanitizedSheetHtml }}
     />
   ) : scheduleData?.excel_preview ? (
     <ExcelPreviewFallback

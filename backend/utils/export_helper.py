@@ -8,7 +8,7 @@ def _sheet_name_to_semestre(sheet_name: str) -> int:
     return int(match.group()) if match else 0
 
 
-def export_to_json_format(schedule: dict, diccionario: dict) -> dict:
+def export_to_json_format(schedule: dict, diccionario: dict, global_diccionario: dict = None) -> dict:
     """Convierte el horario procesado al formato JSON de exportación especificado"""
     from collections import defaultdict
 
@@ -20,14 +20,22 @@ def export_to_json_format(schedule: dict, diccionario: dict) -> dict:
         nfkd = unicodedata.normalize("NFKD", name.lower().strip())
         return "".join(c for c in nfkd if not unicodedata.combining(c))
 
+    def _derive_subject_id(name: str) -> str:
+        import re
+        norm = _normalize_name(name)
+        if not norm:
+            return "materia_sin_nombre"
+        sid = re.sub(r'[^a-z0-9]+', '_', norm)
+        sid = re.sub(r'_+', '_', sid).strip('_')
+        return sid or "materia_sin_nombre"
+
     def process_celdas(celdas: list, semestre_num: int) -> dict:
         """Procesa las celdas de una hoja y devuelve un dict {materia_key: materia_data}.
         Agrupa materias por materia_id si está en el diccionario, o por nombre normalizado
         si no está, evitando duplicados cuando la misma materia aparece en múltiples celdas.
         """
         materias_map = {}
-        # Mapa auxiliar: nombre_normalizado -> materia_key (para materias sin ID de diccionario)
-        nombre_to_key = {}
+        global_dict = global_diccionario or {}
 
         for celda in celdas:
             dia = celda["dia"]
@@ -46,20 +54,24 @@ def export_to_json_format(schedule: dict, diccionario: dict) -> dict:
                 creditos = None
                 codigo = None
 
-                # Si el bloque tiene un materia_id válido del diccionario, usarlo directamente
-                if raw_materia_id and raw_materia_id in diccionario:
+                if raw_materia_id:
                     materia_key = raw_materia_id
-                    creditos = diccionario[raw_materia_id].get("creditos")
-                    codigo = diccionario[raw_materia_id].get("codigo")
                 else:
-                    # Sin ID válido: agrupar por nombre normalizado para evitar duplicados
-                    nombre_norm = _normalize_name(materia_nombre)
-                    if nombre_norm in nombre_to_key:
-                        materia_key = nombre_to_key[nombre_norm]
-                    else:
-                        # Generar un ID estable basado en el nombre normalizado
-                        materia_key = "electiva_" + nombre_norm.replace(" ", "_")[:30] if nombre_norm else "electiva_" + bloque["id"][:8]
-                        nombre_to_key[nombre_norm] = materia_key
+                    materia_key = _derive_subject_id(materia_nombre) if materia_nombre else f"materia_{bloque['id'][:8]}"
+
+                if materia_key in diccionario:
+                    creditos = diccionario[materia_key].get("creditos")
+                    codigo = diccionario[materia_key].get("codigo")
+                    if diccionario[materia_key].get("nombre_oficial"):
+                        materia_nombre = diccionario[materia_key]["nombre_oficial"]
+                elif materia_key in global_dict:
+                    creditos = global_dict[materia_key].get("creditos")
+                    codigo = global_dict[materia_key].get("codigo")
+                    if global_dict[materia_key].get("nombre_oficial"):
+                        materia_nombre = global_dict[materia_key]["nombre_oficial"]
+                else:
+                    creditos = bloque.get("creditos")
+                    codigo = bloque.get("codigo")
 
                 grupo_id = f"{materia_key}_{grupo.lower().replace(' ', '_')}" if grupo else f"{materia_key}_na"
                 jornada = "nocturna" if int(hora_inicio.split(":")[0]) >= 18 else "diurna"

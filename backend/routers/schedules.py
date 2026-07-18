@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import JSONResponse, HTMLResponse
 from typing import Dict, List, Any, Optional
-from models import BlockUpdate, BulkBlockUpdate, BlockCreate, BlockMove, GlobalReplaceRequest
+from models import BlockUpdate, BulkBlockUpdate, BlockCreate, BlockMove, GlobalReplaceRequest, SubjectMetadataUpdate
 from state import limiter, programas_dict
 from storage import storage
+from storage.subjects_storage import subjects_storage
 import uuid
 import os
 import tempfile
@@ -11,6 +12,10 @@ import logging
 import openpyxl
 import asyncio
 from collections import defaultdict
+from routers.auth import get_current_admin
+from utils.program_loader import refresh_all_program_processors
+from utils.subject_utils import derive_subject_id
+from utils.subject_resolver import resolve_subject_fields, is_base_subject
 from utils.schedule_helpers import (
     _atomic_update_with_retry,
     _add_audit_log,
@@ -27,6 +32,62 @@ router = APIRouter(tags=["Schedules"])
 # In-memory cache: schedule_id → temp file path with original Excel bytes
 _excel_file_cache: Dict[str, str] = {}
 _excel_locks = defaultdict(asyncio.Lock)
+
+
+def _collect_subjects_summary(schedule: Dict) -> List[Dict]:
+    program_id = schedule.get("programa_id", "ingenieria_de_sistemas")
+    summary: Dict[str, Dict] = {}
+
+    for celdas in _iter_celdas_collections(schedule):
+        for cell in celdas:
+            for block in cell.get("bloques", []):
+                subject_name = (block.get("materia") or "").strip()
+                subject_id = (block.get("materia_id") or "").strip() or derive_subject_id(subject_name)
+                if not subject_id:
+                    continue
+
+                if subject_id not in summary:
+                    summary[subject_id] = {
+                        "id": subject_id,
+                        "nombre": subject_name,
+                        "codigo": block.get("codigo"),
+                        "creditos": block.get("creditos"),
+                        "occurrences": 0,
+                        "confidence_sum": 0.0,
+                    }
+
+                entry = summary[subject_id]
+                entry["occurrences"] += 1
+                entry["confidence_sum"] += float(block.get("nivel_confianza", 0.0) or 0.0)
+
+                if not entry.get("codigo") and block.get("codigo"):
+                    entry["codigo"] = block.get("codigo")
+                if entry.get("creditos") is None and block.get("creditos") is not None:
+                    entry["creditos"] = block.get("creditos")
+
+    result = []
+    for subject_id, entry in summary.items():
+        resolved = resolve_subject_fields(
+            program_id=program_id,
+            materia=entry.get("nombre"),
+            materia_id=subject_id,
+            codigo=entry.get("codigo"),
+            creditos=entry.get("creditos"),
+        )
+        avg_conf = entry["confidence_sum"] / entry["occurrences"] if entry["occurrences"] else 0.0
+
+        result.append({
+            "id": resolved["id"],
+            "nombre": resolved.get("nombre") or entry.get("nombre"),
+            "codigo": resolved.get("codigo"),
+            "creditos": resolved.get("creditos"),
+            "confianza_promedio": avg_conf,
+            "ocurrencias": entry["occurrences"],
+            "source": resolved.get("source", "manual"),
+            "is_base": is_base_subject(program_id, resolved["id"]),
+        })
+
+    return sorted(result, key=lambda x: x.get("nombre", ""))
 
 
 def register_excel_file(schedule_id: str, file_path: str):
@@ -183,24 +244,7 @@ async def create_block(schedule_id: str, payload: BlockCreate):
     from utils.time_utils import calcular_bloques_horarios
 
     bloques_cantidad, _ = calcular_bloques_horarios(payload.hora_inicio, payload.hora_fin)
-    new_block = {
-        "id": str(uuid.uuid4()),
-        "materia": payload.materia,
-        "materia_id": payload.materia_id,
-        "grupo": payload.grupo,
-        "docente": payload.docente,
-        "aula": payload.aula,
-        "nivel_confianza": 1.0,
-        "estado": "confirmed",
-        "celda_origen": None,
-        "texto_original": None,
-        "horarios": [{
-            "dia": payload.dia,
-            "hora_inicio": payload.hora_inicio,
-            "hora_fin": payload.hora_fin,
-            "bloques_cantidad": bloques_cantidad,
-        }],
-    }
+    created_block: Dict[str, Any] = {}
 
     def _add_to(celdas: List[Dict]):
         for cell in celdas:
@@ -218,6 +262,38 @@ async def create_block(schedule_id: str, payload: BlockCreate):
     # MONGODB-READY: Reemplazado por storage.update()
     # NOTA: do_create NO debe ser async porque storage.update() llama a update_fn sin await
     def do_create(schedule: Dict) -> None:
+        program_id = schedule.get("programa_id", "ingenieria_de_sistemas")
+        resolved = resolve_subject_fields(
+            program_id=program_id,
+            materia=payload.materia,
+            materia_id=payload.materia_id,
+            codigo=payload.codigo,
+            creditos=payload.creditos,
+        )
+
+        new_block = {
+            "id": str(uuid.uuid4()),
+            "materia": resolved["nombre"],
+            "materia_id": resolved["id"],
+            "grupo": payload.grupo,
+            "docente": payload.docente,
+            "aula": payload.aula,
+            "codigo": resolved.get("codigo"),
+            "creditos": resolved.get("creditos"),
+            "nivel_confianza": 1.0,
+            "estado": "confirmed",
+            "celda_origen": None,
+            "texto_original": None,
+            "horarios": [{
+                "dia": payload.dia,
+                "hora_inicio": payload.hora_inicio,
+                "hora_fin": payload.hora_fin,
+                "bloques_cantidad": bloques_cantidad,
+            }],
+        }
+        created_block.clear()
+        created_block.update(new_block)
+
         hojas_data = schedule.get("hojas_data") or {}
         if payload.sheet not in hojas_data:
             raise HTTPException(status_code=404, detail=f"Hoja '{payload.sheet}' no encontrada")
@@ -226,13 +302,13 @@ async def create_block(schedule_id: str, payload: BlockCreate):
         if schedule.get("hoja_actual") == payload.sheet:
             _add_to(schedule.setdefault("celdas", []))
             
-        _add_audit_log(schedule, "CREAR_BLOQUE", new_block["id"], f"Nuevo bloque creado: {payload.materia}")
+        _add_audit_log(schedule, "CREAR_BLOQUE", new_block["id"], f"Nuevo bloque creado: {resolved['nombre']}")
     
     success = await storage.update(schedule_id, do_create)
     if not success:
         raise HTTPException(status_code=404, detail="Horario no encontrado")
 
-    return {"message": "Bloque creado exitosamente", "block": new_block}
+    return {"message": "Bloque creado exitosamente", "block": created_block}
 
 @router.patch("/schedule/{schedule_id}/blocks/bulk")
 async def bulk_update_blocks(schedule_id: str, payload: BulkBlockUpdate):
@@ -243,23 +319,10 @@ async def bulk_update_blocks(schedule_id: str, payload: BulkBlockUpdate):
     
     def do_bulk_update(schedule: Dict) -> None:
         for block_id in payload.block_ids:
-            matches = _find_block_locations(schedule, block_id)
-            if not matches:
+            count = _update_block_in_schedule(schedule, block_id, update)
+            if count == 0:
                 not_found.append(block_id)
                 continue
-            for _c, blk, _cl in matches:
-                if update.materia is not None:
-                    blk["materia"] = update.materia
-                if update.materia_id is not None:
-                    blk["materia_id"] = update.materia_id
-                if update.grupo is not None:
-                    blk["grupo"] = update.grupo
-                if update.docente is not None:
-                    blk["docente"] = update.docente
-                if update.aula is not None:
-                    blk["aula"] = update.aula
-                blk["estado"] = "confirmed"
-                blk["nivel_confianza"] = 1.0
             updated_ids.add(block_id)
             _add_audit_log(schedule, "ACTUALIZACION_MASIVA", block_id, "Actualización desde operación masiva")
     
@@ -331,8 +394,8 @@ async def export_schedule(request: Request, schedule_id: str):
     
     program_id = schedule.get("programa_id", "ingenieria_de_sistemas")
     subject_dict = programas_dict.get(program_id, {}).get("diccionario", {})
-    
-    exported = export_to_json_format(schedule, subject_dict)
+
+    exported = export_to_json_format(schedule, subject_dict, subjects_storage.get_all_dict())
     
     return JSONResponse(content=exported)
 
@@ -386,7 +449,7 @@ async def publish_schedule(request: Request, schedule_id: str):
 
     program_id = schedule.get("programa_id", "ingenieria_de_sistemas")
     subject_dict = programas_dict.get(program_id, {}).get("diccionario", {})
-    exported = export_to_json_format(schedule, subject_dict)
+    exported = export_to_json_format(schedule, subject_dict, subjects_storage.get_all_dict())
 
     try:
         public_url = await asyncio.to_thread(
@@ -901,6 +964,88 @@ async def lint_schedule(schedule_id: str):
         "total_errors": len(errors),
         "total_warnings": len(warnings)
     }
+
+
+@router.get("/schedule/{schedule_id}/subjects-summary")
+async def get_schedule_subjects_summary(schedule_id: str):
+    schedule = await storage.get(schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Horario no encontrado")
+    return {"subjects": _collect_subjects_summary(schedule)}
+
+
+@router.patch("/schedule/{schedule_id}/subject/{subject_id}/metadata")
+async def update_subject_metadata(schedule_id: str, subject_id: str, payload: SubjectMetadataUpdate):
+    def do_update(schedule: Dict) -> tuple:
+        program_id = schedule.get("programa_id", "ingenieria_de_sistemas")
+        if is_base_subject(program_id, subject_id):
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede editar metadatos de una asignatura del diccionario base",
+            )
+
+        updated = 0
+        for celdas in _iter_celdas_collections(schedule):
+            for cell in celdas:
+                for blk in cell.get("bloques", []):
+                    current_id = (blk.get("materia_id") or "").strip()
+                    if not current_id:
+                        current_id = derive_subject_id(blk.get("materia") or "")
+                    if current_id != subject_id:
+                        continue
+
+                    blk["materia_id"] = subject_id
+                    if payload.codigo is not None:
+                        blk["codigo"] = payload.codigo
+                    if payload.creditos is not None:
+                        blk["creditos"] = payload.creditos
+                    blk["estado"] = "confirmed"
+                    blk["nivel_confianza"] = 1.0
+                    updated += 1
+
+        if updated == 0:
+            raise HTTPException(status_code=404, detail="Asignatura no encontrada en el horario")
+
+        _add_audit_log(schedule, "ACTUALIZAR_ASIGNATURA_METADATA", subject_id, f"Actualizados {updated} bloques")
+        return schedule, {"message": "Metadatos de asignatura actualizados", "updated_blocks": updated}
+
+    return await _atomic_update_with_retry(schedule_id, do_update)
+
+
+@router.post("/schedule/{schedule_id}/subject/{subject_id}/save-global")
+async def save_subject_to_global_dictionary(
+    schedule_id: str,
+    subject_id: str,
+    payload: Optional[SubjectMetadataUpdate] = None,
+    admin: dict = Depends(get_current_admin),
+):
+    schedule = await storage.get(schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Horario no encontrado")
+
+    program_id = schedule.get("programa_id", "ingenieria_de_sistemas")
+    if is_base_subject(program_id, subject_id):
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede guardar en global una asignatura que pertenece al diccionario base",
+        )
+
+    subjects = _collect_subjects_summary(schedule)
+    target = next((s for s in subjects if s.get("id") == subject_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Asignatura no encontrada en el horario")
+
+    codigo = payload.codigo if payload and payload.codigo is not None else target.get("codigo")
+    creditos = payload.creditos if payload and payload.creditos is not None else target.get("creditos")
+
+    saved = subjects_storage.upsert(
+        subject_id=subject_id,
+        nombre_oficial=target.get("nombre") or subject_id,
+        codigo=codigo,
+        creditos=creditos,
+    )
+    refresh_all_program_processors()
+    return {"message": "Asignatura guardada en diccionario global", "subject": saved}
 
 
 

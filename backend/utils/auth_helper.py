@@ -3,7 +3,9 @@ from datetime import datetime, timedelta, timezone
 import jwt
 import bcrypt
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "super-secret-key-change-me")
+JWT_SECRET = os.environ.get("JWT_SECRET")
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET no está configurado. Define JWT_SECRET en backend/.env")
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 

@@ -1,8 +1,10 @@
 from typing import List, Dict
 from datetime import datetime, timezone
+import asyncio
 from fastapi import HTTPException
 from models import BlockUpdate
 from storage import storage
+from utils.subject_resolver import resolve_subject_fields
 
 async def _atomic_update_with_retry(
     schedule_id: str,
@@ -10,17 +12,44 @@ async def _atomic_update_with_retry(
     max_retries: int = 3,
     backoff_ms: float = 50.0
 ) -> Dict:
-    def wrapped_update_fn(data: Dict) -> None:
-        nonlocal result_data
-        _updated_data, result_data = update_fn(data)
-    
-    result_data = None
-    success = await storage.update(schedule_id, wrapped_update_fn)
-    
-    if not success:
-        raise HTTPException(status_code=404, detail="Horario no encontrado")
-    
-    return result_data
+    class _RetryConflict(Exception):
+        pass
+
+    for attempt in range(max_retries):
+        current = await storage.get(schedule_id)
+        if not current:
+            raise HTTPException(status_code=404, detail="Horario no encontrado")
+
+        expected_v = current.get("_v", 0)
+        result_data = None
+
+        def wrapped_update_fn(data: Dict) -> None:
+            nonlocal result_data
+            current_v = data.get("_v", 0)
+            if current_v != expected_v:
+                raise _RetryConflict()
+            _updated_data, result_data = update_fn(data)
+
+        try:
+            success = await storage.update(schedule_id, wrapped_update_fn)
+        except _RetryConflict:
+            if attempt == max_retries - 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Conflicto de concurrencia al actualizar el horario. Intenta nuevamente.",
+                )
+            await asyncio.sleep((backoff_ms / 1000.0) * (attempt + 1))
+            continue
+
+        if not success:
+            raise HTTPException(status_code=404, detail="Horario no encontrado")
+
+        return result_data
+
+    raise HTTPException(
+        status_code=409,
+        detail="No fue posible completar la actualización por conflictos de concurrencia.",
+    )
 
 def _add_audit_log(schedule: Dict, accion: str, bloque_id: str = None, detalles: str = ""):
     if "historial_cambios" not in schedule:
@@ -58,10 +87,24 @@ def _update_block_in_schedule(schedule: Dict, block_id: str, update: BlockUpdate
         return 0
     updated_count = 0
     for _c, blk, _cl in matches:
-        if update.materia is not None:
-            blk["materia"] = update.materia
-        if update.materia_id is not None:
-            blk["materia_id"] = update.materia_id
+        if update.materia is not None or update.materia_id is not None or update.codigo is not None or update.creditos is not None:
+            materia_in = update.materia if update.materia is not None else blk.get("materia")
+            materia_id_in = update.materia_id if update.materia_id is not None else blk.get("materia_id")
+            codigo_in = update.codigo if update.codigo is not None else blk.get("codigo")
+            creditos_in = update.creditos if update.creditos is not None else blk.get("creditos")
+
+            resolved = resolve_subject_fields(
+                program_id=schedule.get("programa_id", "ingenieria_de_sistemas"),
+                materia=materia_in,
+                materia_id=materia_id_in,
+                codigo=codigo_in,
+                creditos=creditos_in,
+            )
+            blk["materia"] = resolved["nombre"]
+            blk["materia_id"] = resolved["id"]
+            blk["codigo"] = resolved.get("codigo")
+            blk["creditos"] = resolved.get("creditos")
+
         if update.grupo is not None:
             blk["grupo"] = update.grupo
         if update.docente is not None:

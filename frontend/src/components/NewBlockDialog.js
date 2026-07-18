@@ -81,7 +81,12 @@ const NewBlockDialog = ({ cellSlot, onClose }) => {
   }, [formData.materia, scheduleData]);
 
   const handleChange = (field, value) => {
-    setFormData((p) => ({ ...p, [field]: value }));
+    setFormData((p) => {
+      if (field === 'materia') {
+        return { ...p, materia: value, materia_id: '' };
+      }
+      return { ...p, [field]: value };
+    });
     if (field === 'materia') setShowSuggestions(true);
   };
 
@@ -257,6 +262,7 @@ const NewBlockDialog = ({ cellSlot, onClose }) => {
                       <div className="font-medium text-slate-900">{s.nombre}</div>
                       <div className="text-xs text-slate-500">
                         {s.codigo && `${s.codigo} • `}
+                        {s.creditos != null && `${s.creditos} cr • `}
                         Confianza: {(s.confidence * 100).toFixed(0)}%
                       </div>
                     </button>

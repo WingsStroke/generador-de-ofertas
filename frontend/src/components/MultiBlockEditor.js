@@ -118,7 +118,12 @@ const MultiBlockEditor = ({ onClose }) => {
   }, [formData.materia, scheduleData]);
 
   const handleChange = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => {
+      if (field === 'materia') {
+        return { ...prev, materia: value, materia_id: '' };
+      }
+      return { ...prev, [field]: value };
+    });
     if (field === 'materia') setShowSuggestions(true);
   };
 
@@ -401,6 +406,7 @@ const MultiBlockEditor = ({ onClose }) => {
                       <div className="font-medium text-slate-900">{subject.nombre}</div>
                       <div className="text-xs text-slate-500">
                         {subject.codigo && `${subject.codigo} • `}
+                        {subject.creditos != null && `${subject.creditos} cr • `}
                         Confianza: {(subject.confidence * 100).toFixed(0)}%
                       </div>
                     </button>

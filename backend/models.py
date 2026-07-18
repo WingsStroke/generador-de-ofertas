@@ -30,6 +30,8 @@ class ScheduleBlock(BaseModel):
     docente: Optional[str] = None
     origen_docente: Optional[str] = "motor"
     aula: Optional[str] = None
+    codigo: Optional[str] = None
+    creditos: Optional[int] = None
     nivel_confianza: float = 0.0
     estado: BlockStatus = BlockStatus.UNKNOWN
     celda_origen: Optional[str] = None
@@ -111,6 +113,8 @@ class BlockUpdate(BaseModel):
     docente: Optional[str] = None
     origen_docente: Optional[str] = None
     aula: Optional[str] = None
+    codigo: Optional[str] = None
+    creditos: Optional[int] = None
 
 class BlockMove(BaseModel):
     """Movimiento de un bloque a una nueva celda"""
@@ -136,6 +140,8 @@ class BlockCreate(BaseModel):
     grupo: Optional[str] = None
     docente: Optional[str] = None
     aula: Optional[str] = None
+    codigo: Optional[str] = None
+    creditos: Optional[int] = None
 
 class Subject(BaseModel):
     """Materia del diccionario académico"""
@@ -143,6 +149,16 @@ class Subject(BaseModel):
     
     id: str
     nombre_oficial: str
+    codigo: Optional[str] = None
+    creditos: Optional[int] = None
+
+class GlobalSubjectUpsert(BaseModel):
+    id: Optional[str] = None
+    nombre_oficial: str
+    codigo: Optional[str] = None
+    creditos: Optional[int] = None
+
+class SubjectMetadataUpdate(BaseModel):
     codigo: Optional[str] = None
     creditos: Optional[int] = None
 

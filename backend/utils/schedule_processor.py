@@ -7,6 +7,7 @@ from utils.excel_reader import ExcelReader
 from utils.text_cleaner import TextCleaner
 from utils.semantic_parser import SemanticParser, looks_like_modality_group
 from utils.subject_matcher import SubjectMatcher
+from utils.subject_utils import derive_subject_id
 from utils.time_utils import calcular_bloques_horarios
 from models import (
     ScheduleBlock, ScheduleCell, ProcessedSchedule, 
@@ -266,6 +267,11 @@ class ScheduleProcessor:
         
         materia_text = entities["materia"]
         subject_id, subject_name, confidence = self.matcher.match_subject(materia_text)
+
+        if not subject_id:
+            subject_id = derive_subject_id(materia_text)
+
+        subject_meta = self.subject_dict.get(subject_id, {}) if subject_id else {}
         
         estado = BlockStatus.UNKNOWN
         if confidence >= 0.9:
@@ -290,7 +296,11 @@ class ScheduleProcessor:
             grupo=grupo,
             docente=entities["docente"],
             origen_docente=entities["origen_docente"],
-            aula=entities["aula"],
+            # Desde esta version, el aula no se infiere automaticamente.
+            # El campo se mantiene para edicion manual por parte del usuario.
+            aula=None,
+            codigo=subject_meta.get("codigo"),
+            creditos=subject_meta.get("creditos"),
             nivel_confianza=confidence,
             estado=estado,
             celda_origen=celda_ref,
@@ -342,8 +352,8 @@ class ScheduleProcessor:
         if match:
             if (not docente_valido) and match.get("docente"):
                 block.docente = match["docente"]
-            if match.get("codigo") and not block.materia_id:
-                block.materia_id = match["codigo"]
+            if match.get("codigo") and not block.codigo:
+                block.codigo = match["codigo"]
             block.estado = BlockStatus.CONFIRMED
             block.nivel_confianza = max(block.nivel_confianza, 1.0)
             return
@@ -352,8 +362,8 @@ class ScheduleProcessor:
             block.grupo = single_group["grupo"]
             if (not docente_valido) and single_group.get("docente"):
                 block.docente = single_group["docente"]
-            if single_group.get("codigo") and not block.materia_id:
-                block.materia_id = single_group["codigo"]
+            if single_group.get("codigo") and not block.codigo:
+                block.codigo = single_group["codigo"]
             if block.estado == BlockStatus.UNKNOWN:
                 block.estado = BlockStatus.INFERRED
             block.nivel_confianza = max(block.nivel_confianza, 0.85)

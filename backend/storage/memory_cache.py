@@ -246,15 +246,10 @@ class MemoryStorage:
         async with self._lock:
             # Obtener datos actuales
             if schedule_id in self._cache:
-                data = self._cache[schedule_id]
-                # Recargar del disco por si acaso
-                file_path = self._get_schedule_path(schedule_id)
-                if file_path.exists():
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            data = json.load(f)
-                    except:
-                        pass
+                # Evitar I/O de disco dentro del lock cuando el item ya está en caché.
+                # La caché es la fuente de verdad para la sesión activa y su estado se
+                # persiste al terminar la actualización.
+                data = copy.deepcopy(self._cache[schedule_id])
             else:
                 # Intentar cargar del disco
                 file_path = self._get_schedule_path(schedule_id)
