@@ -246,7 +246,7 @@ async def create_block(schedule_id: str, payload: BlockCreate):
     bloques_cantidad, _ = calcular_bloques_horarios(payload.hora_inicio, payload.hora_fin)
     created_block: Dict[str, Any] = {}
 
-    def _add_to(celdas: List[Dict]):
+    def _add_to(celdas: List[Dict], new_block: Dict[str, Any]):
         for cell in celdas:
             if cell.get("dia") == payload.dia and cell.get("hora_inicio") == payload.hora_inicio:
                 cell.setdefault("bloques", []).append(new_block)
@@ -298,9 +298,9 @@ async def create_block(schedule_id: str, payload: BlockCreate):
         if payload.sheet not in hojas_data:
             raise HTTPException(status_code=404, detail=f"Hoja '{payload.sheet}' no encontrada")
         
-        _add_to(hojas_data[payload.sheet].setdefault("celdas", []))
+        _add_to(hojas_data[payload.sheet].setdefault("celdas", []), new_block)
         if schedule.get("hoja_actual") == payload.sheet:
-            _add_to(schedule.setdefault("celdas", []))
+            _add_to(schedule.setdefault("celdas", []), new_block)
             
         _add_audit_log(schedule, "CREAR_BLOQUE", new_block["id"], f"Nuevo bloque creado: {resolved['nombre']}")
     
