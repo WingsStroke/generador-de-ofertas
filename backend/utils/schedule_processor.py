@@ -8,7 +8,7 @@ from utils.text_cleaner import TextCleaner
 from utils.semantic_parser import SemanticParser, looks_like_modality_group
 from utils.subject_matcher import SubjectMatcher
 from utils.subject_utils import derive_subject_id
-from utils.time_utils import calcular_bloques_horarios
+from utils.time_utils import calcular_bloques_horarios, UNIVERSITY_SCHEDULE_BLOCKS
 from utils.excel_html_renderer import sheet_to_html
 from models import (
     ScheduleBlock, ScheduleCell, ProcessedSchedule, 
@@ -68,7 +68,7 @@ class ScheduleProcessor:
                 
                 global_confidence = total_confidence / total_blocks if total_blocks > 0 else 0.0
                 
-                estructura_horas = [{"inicio": h[0], "fin": h[1]} for h in horas]
+                estructura_horas = [{"inicio": i, "fin": f} for i, f in UNIVERSITY_SCHEDULE_BLOCKS]  # Formato académico fijo de la universidad, no se extrae del archivo
                 preview_cells = [ExcelCell(**cell) for cell in preview_grid]
 
                 try:
@@ -169,7 +169,7 @@ class ScheduleProcessor:
                 total_confidence_all += total_confidence
                 total_blocks_all += total_blocks
                 
-                estructura_horas = [{"inicio": h[0], "fin": h[1]} for h in horas]
+                estructura_horas = [{"inicio": i, "fin": f} for i, f in UNIVERSITY_SCHEDULE_BLOCKS]  # Formato académico fijo de la universidad, no se extrae del archivo
                 preview_cells = [ExcelCell(**cell) for cell in preview_grid]
 
                 try:

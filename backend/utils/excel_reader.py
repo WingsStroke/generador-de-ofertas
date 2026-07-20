@@ -7,6 +7,7 @@ import re
 from utils.merged_cell_handler import MergedCellHandler
 from utils.variable_header_detector import VariableHeaderDetector
 from utils.inline_catalog_extractor import InlineCatalogExtractor, InlineCatalogEntry
+from utils.time_utils import UNIVERSITY_SCHEDULE_BLOCKS, snap_to_university_block
 
 
 class ExcelReader:
@@ -174,24 +175,28 @@ class ExcelReader:
                 i += 1
                 continue
             if len(matches) >= 2:
-                inicio = f"{matches[0][0].zfill(2)}:{matches[0][1]}"
-                fin = f"{matches[1][0].zfill(2)}:{matches[1][1]}"
-                horas.append((inicio, fin, r))
+                inicio_raw = f"{matches[0][0].zfill(2)}:{matches[0][1]}"
+                bloque = snap_to_university_block(inicio_raw)
+                if bloque:
+                    horas.append((bloque[0], bloque[1], r))
                 i += 1
             elif len(matches) == 1 and i + 1 < len(rows_data):
                 # Caso "12:00 -" + "12:50" en filas consecutivas
                 r2, val2, matches2, is_footer2 = rows_data[i + 1]
                 if not is_footer2 and len(matches2) >= 1:
-                    inicio = f"{matches[0][0].zfill(2)}:{matches[0][1]}"
-                    fin = f"{matches2[0][0].zfill(2)}:{matches2[0][1]}"
-                    horas.append((inicio, fin, r))
+                    inicio_raw = f"{matches[0][0].zfill(2)}:{matches[0][1]}"
+                    bloque = snap_to_university_block(inicio_raw)
+                    if bloque:
+                        horas.append((bloque[0], bloque[1], r))
                     i += 2
                 else:
                     i += 1
             else:
                 i += 1
 
-        # De-duplicar por hora_inicio (mantener primera aparición)
+        # De-duplicar por hora_inicio (mantener primera aparición; como todas
+        # las horas ya están ancladas al formato oficial, esto también evita
+        # que dos filas del archivo colisionen en el mismo bloque académico)
         seen = set()
         unique = []
         for h in horas:
@@ -201,9 +206,13 @@ class ExcelReader:
                 unique.append(h)
 
         if not unique:
+            # Ningún bloque oficial pudo anclarse desde el archivo: se usa
+            # igualmente el formato académico completo de la universidad,
+            # asumiendo que las filas de la tabla siguen el orden cronológico
+            # estándar a partir de start_row.
             unique = [
-                ("07:00", "07:50", start_row), ("07:50", "08:40", start_row + 1),
-                ("08:40", "09:30", start_row + 2), ("09:30", "10:20", start_row + 3),
+                (inicio, fin, start_row + idx)
+                for idx, (inicio, fin) in enumerate(UNIVERSITY_SCHEDULE_BLOCKS)
             ]
 
         return unique
