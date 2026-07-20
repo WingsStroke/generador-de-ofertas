@@ -142,6 +142,7 @@ def build_schedule_from_import_json(
             "estructura_dias": sheet_preview.get("estructura_dias", []),
             "estructura_horas": sheet_preview.get("estructura_horas", []),
             "excel_preview": sheet_preview.get("excel_preview", []),
+            "html_preview": sheet_preview.get("html_preview"),
             "nivel_confianza": 1.0,
         }
 
@@ -164,6 +165,7 @@ def build_schedule_from_import_json(
         "estructura_dias": first_sheet_data.get("estructura_dias", []),
         "estructura_horas": first_sheet_data.get("estructura_horas", []),
         "excel_preview": first_sheet_data.get("excel_preview", []),
+        "html_preview": first_sheet_data.get("html_preview"),
         "nivel_confianza_global": 1.0,
         "_v": 0,
     }

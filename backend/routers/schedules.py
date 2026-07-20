@@ -137,16 +137,34 @@ async def get_sheet_preview(
     if not schedule:
         raise HTTPException(status_code=404, detail="Horario no encontrado")
 
-    # 2. Buscar el archivo Excel en caché
+    # 2. Preferir el HTML ya persistido en el propio horario (generado una sola
+    #    vez al procesar el archivo original). Esto es lo que permite que la
+    #    vista previa se reconstruya correctamente incluso cuando el horario
+    #    proviene de un JSON reimportado y no existe archivo original en disco.
+    hojas_data = schedule.get("hojas_data") or {}
+    hoja_info = hojas_data.get(sheet_name)
+    stored_html = None
+    if hoja_info and hoja_info.get("html_preview"):
+        stored_html = hoja_info["html_preview"]
+    elif not hojas_data and schedule.get("html_preview") and schedule.get("hoja_actual") == sheet_name:
+        stored_html = schedule.get("html_preview")
+
+    if stored_html:
+        return HTMLResponse(content=stored_html, media_type="text/html; charset=utf-8")
+
+    # 3. Respaldo (compatibilidad con horarios antiguos sin html_preview
+    #    persistido): intentar renderizar desde el archivo original en caché.
     excel_path = _excel_file_cache.get(schedule_id)
     if not excel_path or not os.path.exists(excel_path):
         raise HTTPException(
             status_code=404,
             detail="El archivo Excel original no está disponible. "
-                   "Esto ocurre si el servidor fue reiniciado después de la subida."
+                   "Esto ocurre si el servidor fue reiniciado después de la subida, "
+                   "o si el horario fue reimportado desde un JSON generado antes de "
+                   "esta corrección."
         )
 
-    # 3. Abrir y renderizar
+    # 4. Abrir y renderizar
     try:
         async with _excel_locks[schedule_id]:
             def _render():

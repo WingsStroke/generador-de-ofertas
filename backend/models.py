@@ -69,6 +69,7 @@ class SheetData(BaseModel):
     estructura_dias: List[str] = []
     estructura_horas: List[Dict[str, str]] = []
     excel_preview: List[ExcelCell] = []
+    html_preview: Optional[str] = None
     nivel_confianza: float = 0.0
 
 class ProcessedSchedule(BaseModel):
@@ -88,6 +89,7 @@ class ProcessedSchedule(BaseModel):
     estructura_dias: List[str] = []
     estructura_horas: List[Dict[str, str]] = []
     excel_preview: List[ExcelCell] = []
+    html_preview: Optional[str] = None
     nivel_confianza_global: float = 0.0
     historial_cambios: List[Dict[str, Any]] = []
 

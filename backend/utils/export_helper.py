@@ -165,6 +165,7 @@ def export_to_json_format(schedule: dict, diccionario: dict, global_diccionario:
             "excel_preview": hoja_info.get("excel_preview", []),
             "estructura_dias": hoja_info.get("estructura_dias", []),
             "estructura_horas": hoja_info.get("estructura_horas", []),
+            "html_preview": hoja_info.get("html_preview"),
         }
 
     # ---------------------------------------------------------

@@ -9,6 +9,7 @@ from utils.semantic_parser import SemanticParser, looks_like_modality_group
 from utils.subject_matcher import SubjectMatcher
 from utils.subject_utils import derive_subject_id
 from utils.time_utils import calcular_bloques_horarios
+from utils.excel_html_renderer import sheet_to_html
 from models import (
     ScheduleBlock, ScheduleCell, ProcessedSchedule, 
     ExcelCell, BlockStatus, TimeSlot
@@ -69,7 +70,12 @@ class ScheduleProcessor:
                 
                 estructura_horas = [{"inicio": h[0], "fin": h[1]} for h in horas]
                 preview_cells = [ExcelCell(**cell) for cell in preview_grid]
-                
+
+                try:
+                    html_preview_str = sheet_to_html(reader.workbook, current_sheet)
+                except Exception:
+                    html_preview_str = None
+
                 schedule = ProcessedSchedule(
                     id=str(uuid.uuid4()),
                     nombre_archivo=filename,
@@ -83,6 +89,7 @@ class ScheduleProcessor:
                     estructura_dias=dias,
                     estructura_horas=estructura_horas,
                     excel_preview=preview_cells,
+                    html_preview=html_preview_str,
                     nivel_confianza_global=global_confidence
                 )
                 
@@ -164,13 +171,19 @@ class ScheduleProcessor:
                 
                 estructura_horas = [{"inicio": h[0], "fin": h[1]} for h in horas]
                 preview_cells = [ExcelCell(**cell) for cell in preview_grid]
-                
+
+                try:
+                    html_preview_str = sheet_to_html(reader.workbook, sheet_name)
+                except Exception:
+                    html_preview_str = None
+
                 hojas_data[sheet_name] = {
                     "nombre": sheet_name,
                     "celdas": [c.model_dump() for c in processed_cells],
                     "estructura_dias": dias,
                     "estructura_horas": estructura_horas,
                     "excel_preview": [e.model_dump() for e in preview_cells],
+                    "html_preview": html_preview_str,
                     "nivel_confianza": sheet_confidence
                 }
             
@@ -192,6 +205,7 @@ class ScheduleProcessor:
                 estructura_dias=first_sheet_data.get("estructura_dias", []),
                 estructura_horas=first_sheet_data.get("estructura_horas", []),
                 excel_preview=[ExcelCell(**e) for e in first_sheet_data.get("excel_preview", [])],
+                html_preview=first_sheet_data.get("html_preview"),
                 nivel_confianza_global=global_confidence
             )
             
