@@ -89,6 +89,7 @@ credentials.json
 *.pem
 *.key
 .credentials
+cloudrun.yaml
 
 # Backend outputs
 backend/data/

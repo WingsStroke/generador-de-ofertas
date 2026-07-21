@@ -4,7 +4,7 @@ from pathlib import Path
 from state import programas_dict, processors
 from utils.schedule_processor import ScheduleProcessor
 from storage.subjects_storage import subjects_storage
-from utils.subject_utils import merge_subject_dicts
+from utils.subject_utils import merge_subject_dicts, derive_subject_id
 
 
 def _build_merged_subject_dict(program_id: str):
@@ -30,6 +30,44 @@ def get_program_subjects(program_id: str):
         return {}
     return _build_merged_subject_dict(program_id)
 
+def _normalize_subject_dict_keys(subject_dict: dict, programa_id: str) -> dict:
+    """
+    Fuerza que el ID de cada materia se derive SIEMPRE de su nombre oficial
+    (sin espacios, sin tildes, sin caracteres especiales), sin importar qué
+    clave tenga físicamente el archivo JSON del diccionario. Esto evita que
+    un mismo nombre de materia (ej. "Cálculo Diferencial") termine con IDs
+    distintos entre programas solo porque algún diccionario incluía el
+    código de la asignatura en la clave y otro no.
+
+    Si dentro de un MISMO programa dos materias distintas comparten
+    nombre oficial (ej. varias "Electiva de Profundización Profesional"
+    con códigos distintos), se les agrega un sufijo numérico (_2, _3, ...)
+    para no perder ninguna, en vez de colapsarlas en un solo ID.
+    """
+    normalized: dict = {}
+    for original_key, data in subject_dict.items():
+        nombre_oficial = (data or {}).get("nombre_oficial") or original_key
+        base_id = derive_subject_id(nombre_oficial)
+
+        canonical_id = base_id
+        suffix = 2
+        while canonical_id in normalized:
+            logging.warning(
+                f"[{programa_id}] Nombre de materia duplicado: '{nombre_oficial}' "
+                f"(clave original '{original_key}') -> usando ID '{base_id}_{suffix}' "
+                f"para no perder la materia."
+            )
+            canonical_id = f"{base_id}_{suffix}"
+            suffix += 1
+
+        if canonical_id != original_key:
+            logging.info(f"[{programa_id}] Normalizando ID de materia: '{original_key}' -> '{canonical_id}'")
+
+        normalized[canonical_id] = data
+
+    return normalized
+
+
 def load_academic_programs(root_dir: Path):
     """Carga todos los programas académicos disponibles"""
     diccionarios_dir = root_dir / "diccionarios"
@@ -51,6 +89,8 @@ def load_academic_programs(root_dir: Path):
         try:
             with open(dict_file, 'r', encoding='utf-8') as f:
                 subject_dict = json.load(f)
+
+            subject_dict = _normalize_subject_dict_keys(subject_dict, programa_id)
             
             programas_dict[programa_id] = {
                 "id": programa_id,
