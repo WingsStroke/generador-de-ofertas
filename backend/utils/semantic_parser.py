@@ -109,7 +109,14 @@ class SemanticParser:
 
     @staticmethod
     def extract_entities(text: str, teachers_list: List[str] = None) -> Dict[str, Optional[str]]:
-        """Extrae materia, grupo, docente y aula de un texto."""
+        """Extrae materia, grupo, docente y aula de un texto.
+
+        El TextCleaner ya convirtió los saltos de línea del patrón Civil en ' - ',
+        por lo que recibimos texto como:
+          "Cálculo Diferencial Grupo F1 - JORGE PEREZ"
+          "Expresión Gráfica Grupo A1 - EDGAR MARIN T. - Salón de Dibujo"
+          "Diseño Asistido Grupo A1 - Sala de Simulación - EDGAR MARIN."
+        """
         if not text:
             return {
                 "materia": None,
@@ -132,11 +139,9 @@ class SemanticParser:
         aula = None
 
         # ── Limpieza especial de la palabra "Aula" ───────────────────────────
-        # A veces aparece "Aula Nombre Docente" o la palabra "Aula" pegada al final.
         for i in range(1, len(parts)):
             if re.match(r'(?i)^aula\s+[A-Z]', parts[i].strip()):
                 parts[i] = re.sub(r'(?i)^aula\s+', '', parts[i].strip())
-
 
         # ── 1. Búsqueda de docente en diccionario con RapidFuzz ─────────────
         teachers_ascii = {}
@@ -157,17 +162,10 @@ class SemanticParser:
                         if not looks_like_modality_group(matched_teacher):
                             docente = matched_teacher
                             origen_docente = "diccionario"
-
-                            # Solo eliminar la parte si es PRINCIPALMENTE el nombre
-                            # del docente (no un texto largo que contenga otros datos).
-                            # Criterio: la parte no debe tener más del doble de palabras
-                            # que el nombre del docente.
                             teacher_word_count = len(matched_teacher.split())
                             part_word_count = len(part.split())
                             if part_word_count <= teacher_word_count * 2:
                                 parts.pop(i)
-                            # Si la parte es más larga, NO se elimina — _clean_subject_name
-                            # se encargará de quitar el nombre del docente de la materia.
                             break
 
             # Fallback: buscar en el texto completo con partial_ratio
@@ -190,42 +188,56 @@ class SemanticParser:
                 materia_raw = re.sub(SemanticParser.GRUPO_PATTERN, '', materia_raw).strip()
             materia = materia_raw
 
-        # ── 3. Inferir docente y aula desde fragmentos restantes ────────────
-        if len(parts) >= 2:
-            # Limpiar "Aula" si quedó incrustada al inicio de la parte
-            second_part_clean = re.sub(r'(?i)^aula\s+', '', parts[1]).strip()
-            
-            if not docente and SemanticParser._is_person_name(second_part_clean):
-                docente = second_part_clean
-                if len(parts) >= 3:
-                    aula = parts[2]
-            else:
-                aula = parts[1]
-                if len(parts) >= 3 and not docente:
-                    third_part_clean = re.sub(r'(?i)^aula\s+', '', parts[2]).strip()
-                    if SemanticParser._is_person_name(third_part_clean):
-                        docente = third_part_clean
+        # ── 3. Asignar docente y aula de los fragmentos restantes ───────────
+        # Recorremos parts[1:] y clasificamos cada fragmento:
+        #   - Si parece nombre de persona → docente (primera vez)
+        #   - Si parece ubicación → aula (primera vez)
+        # El orden puede ser cualquiera (Civil pone docente antes o después del aula).
+        remaining = parts[1:] if len(parts) > 1 else []
 
-        if not docente and len(parts) >= 3:
-            for part in parts[1:]:
-                if SemanticParser._is_person_name(part):
-                    docente = part
-                    break
+        for part in remaining:
+            part_clean = re.sub(r'(?i)^aula\s+', '', part).strip()
+            if not part_clean:
+                continue
 
-        if not aula and len(parts) >= 3:
-            for part in reversed(parts[1:]):
-                if not SemanticParser._is_person_name(part) and part != docente:
-                    if any(kw in part.lower() for kw in ['lab', 'sal', 'aula', 'bloque', 'edificio']):
-                        aula = part
-                        break
+            is_person = SemanticParser._is_person_name(part_clean)
+            is_location = bool(
+                re.search(
+                    r'(?i)\b(?:lab(?:oratorio)?|sal[oó]n|sala|aula|bloque|edificio|'
+                    r'informática|simulaci[oó]n|dibujo|geotecnia|materiales?|f[ií]sica|'
+                    r'qu[ií]mica|biblioteca|virtual|taller)\b',
+                    part_clean
+                )
+            )
 
-        # ── 4. Verificador de nombre de materia ──────────────────────────────
+            if is_person and not docente:
+                # Verificar que no sea una modalidad
+                if not looks_like_modality_group(part_clean):
+                    docente = part_clean
+                    origen_docente = "motor"
+            elif is_location and not aula:
+                aula = part_clean
+            elif not is_person and not is_location and not docente:
+                # Fragmento ambiguo: intentar heurística _is_person_name
+                if SemanticParser._is_person_name(part_clean):
+                    docente = part_clean
+                    origen_docente = "motor"
+
+        # ── 4. Fallback: si solo hay 2 partes y la segunda parece persona ────
+        if not docente and len(parts) == 2:
+            second = parts[1]
+            second_clean = re.sub(r'(?i)^aula\s+', '', second).strip()
+            if SemanticParser._is_person_name(second_clean) and not looks_like_modality_group(second_clean):
+                docente = second_clean
+                origen_docente = "motor"
+
+        # ── 5. Verificador de nombre de materia ──────────────────────────────
         if materia:
             materia = SemanticParser._clean_subject_name(
                 materia, docente, teachers_ascii, teachers_ascii_keys
             )
 
-        # ── 5. Filtros de exclusión mutua para aula ─────────────────────────────────
+        # ── 6. Filtros de exclusión mutua para aula ──────────────────────────
         if aula and grupo:
             aula_limpia = re.sub(r'(?i)^grupo\s*', '', aula).strip()
             if aula_limpia == grupo:
@@ -235,14 +247,8 @@ class SemanticParser:
             if not any(kw in aula.lower() for kw in ['lab', 'sal', 'aula', 'bloque', 'edificio']):
                 aula = None
 
-        # 5b. Eliminar código de grupo residual al final del campo `aula`.
-        # Caso frecuente en Alimentos: aula = "Laboratorio A1" cuando la celda es
-        # "Quimica Organica Laboratorio A1". El grupo ya fue extraído; el aula debe
-        # quedar como "Laboratorio" o eliminarse si es solo un código de grupo.
         if aula and grupo:
-            # Quitar el código de grupo del final del campo aula
             aula_sin_grupo = re.sub(r'\s+' + re.escape(grupo) + r'\s*$', '', aula).strip()
-            # Si aula queda vacía o es solo separador, limpiar
             aula_sin_grupo = re.sub(r'^[-\s]+$', '', aula_sin_grupo).strip()
             aula = aula_sin_grupo if aula_sin_grupo else None
 
@@ -306,6 +312,11 @@ class SemanticParser:
         # 4d. Quitar código de grupo residual al final ("CALCULO III A1" → "CALCULO III")
         cleaned = re.sub(r'\s+[A-Z]\d+\s*$', '', cleaned).strip()
 
+        # 4d2. Quitar la palabra "Grupo" si quedó residual al final del nombre.
+        # Ocurre cuando la celda tiene "Cálculo Diferencial Grupo F1" y el grupo
+        # (F1) ya fue extraído: queda "Cálculo Diferencial Grupo" → limpiar "Grupo".
+        cleaned = re.sub(r'(?i)\s+grupo\s*$', '', cleaned).strip()
+
         # 4e. Quitar la palabra "Aula" si quedó pegada al final de la materia
         cleaned = re.sub(r'(?i)\s+aula\s*$', '', cleaned).strip()
 
@@ -336,24 +347,45 @@ class SemanticParser:
     def _is_person_name(text: str) -> bool:
         """Heurística robusta para detectar si un texto es un nombre de persona.
 
-        Reglas:
-        - Acepta formato inicial + apellido: "J. PEREZ" o "J RAMIREZ".
-        - Requiere al menos 2 palabras con mayúscula inicial.
-        - Descarta palabras clave de ubicación física.
-        - Descarta códigos alfanuméricos simples (ej. "A1", "LAB201").
-        - Rechaza títulos de materia del tipo "CALCULO III" (1 no-romano + romano).
-        - Rechaza fragmentos del tipo "Teoria A1", "Laboratorio F2"
-          (modalidad de curso + código de grupo).
+        Acepta:
+          - "JORGE PEREZ", "EDGAR MARIN T.", "PEDRO CAÑATE C."  (apellido con inicial)
+          - "Jose Hernández Miranda", "RAÚL CASTRO C."
+          - "J. PEREZ", "J RAMIREZ"  (inicial + apellido)
+        Rechaza:
+          - Palabras de ubicación (Lab, Salón, Sala, Aula, Bloque…)
+          - Códigos de grupo (A1, G1…)
+          - Modalidades de curso (Teoría, Laboratorio…)
+          - Siglas institucionales cortas (GIMA, SIG…)
+          - Números romanos solos ("Cálculo III")
         """
         if not text:
             return False
 
         cleaned = re.sub(r'[.,;]', '', text).strip()
+        if not cleaned or len(cleaned) < 4:
+            return False
+
+        # Rechazar si contiene palabra de ubicación
+        if any(kw in cleaned.lower() for kw in _LOCATION_KEYWORDS):
+            return False
+
+        # Rechazar modalidades de curso
+        if looks_like_modality_group(cleaned):
+            return False
+
+        # Rechazar paréntesis institucional  "(ESCONPAT)", "(GIMA)"
+        if cleaned.startswith('('):
+            return False
+
+        # Rechazar si empieza con "Grupo"
+        if re.match(r'(?i)^grupo\b', cleaned):
+            return False
+
         words = cleaned.split()
 
         # Caso especial: inicial + apellido ("J PEREZ", "J. RAMIREZ")
         if (len(words) == 2
-                and re.fullmatch(r'[A-Z]', words[0])
+                and re.fullmatch(r'[A-ZÁÉÍÓÚÑ]', words[0])
                 and len(words[1]) > 3
                 and words[1][0].isupper()):
             return True
@@ -361,25 +393,26 @@ class SemanticParser:
         if len(words) < 2:
             return False
 
-        caps = sum(1 for w in words if w and w[0].isupper())
+        # Caso: "NOMBRE APELLIDO T."  — la última palabra es una inicial (una letra)
+        # Validar igualmente: el resto debe parecer un nombre
+        last_word = words[-1]
+        effective_words = words[:-1] if re.fullmatch(r'[A-ZÁÉÍÓÚÑ]', last_word) else words
+
+        caps = sum(1 for w in effective_words if w and (w[0].isupper() or w[0] in 'ÁÉÍÓÚ'))
         if caps < 2:
             return False
 
-        lower = cleaned.lower()
-        if any(kw in lower for kw in _LOCATION_KEYWORDS):
+        # Rechazar si todas las palabras son siglas muy cortas (≤3 chars, todo mayúsculas).
+        # Casos: "SIG CAD", "GIS VIA" → no son nombres de persona.
+        # "EDIL MELO", "EDIL MELO J" → NO se rechazan (al menos una tiene >3 letras).
+        if all(w.isupper() and len(w) <= 3 for w in effective_words):
             return False
 
+        # Código alfanumérico puro
         if re.fullmatch(r'[A-Z]{1,4}\d+', cleaned):
             return False
 
-        # Rechazar si TODAS las palabras son modalidades de curso o códigos de grupo.
-        # Ejemplos problemáticos: "Teoria A1", "Laboratorio F2", "Lab A3".
-        # Si todas las palabras caen en {modalidad} ∪ {código_grupo}, NO es persona.
-        if looks_like_modality_group(text):
-            return False
-
-        # Rechazar si tiene número romano y solo 1 palabra no-romana
-        # → "CALCULO III" = False, "GARCIA III" seguirá pasando (tiene apellido largo)
+        # Rechazar si tiene número romano y solo 1 palabra no-romana ("CALCULO III")
         roman_re = re.compile(r'^(?:I{1,3}|IV|VI{0,3}|IX|XI{0,3}|XIV|XV|XVI)$', re.IGNORECASE)
         has_roman = any(roman_re.match(w) for w in words)
         non_roman = [w for w in words if not roman_re.match(w)]
